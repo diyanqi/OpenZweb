@@ -1,0 +1,386 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		E4F5A6B7C8D94E0F1A2B3C4D /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E64789A0B1C2D3 /* UpdateChecker.swift */; };
+		EF0C6D06918A46CF853DDBCC /* SparklineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBA50C313D341AE8DED9FFF /* SparklineView.swift */; };
+		A5A6EFCB8F3C41ACBE4CC680 /* OTPInputView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 025B609CFA2F4CB8B48E60CE /* OTPInputView.swift */; };
+		103BB3EAA2F0467ABFDAC1FC /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09560E3347F345229FEF7A9C /* NetworkMonitor.swift */; };
+		B82E1D3F9C2B4E7A0F4D8C1E /* SystemProxyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91F0C2E8B1A4D6F9E3C7B2D /* SystemProxyManager.swift */; };
+		C2CF0D11EC29477E9D5B2CDC /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8363A5ED13443048F04E17C /* AboutView.swift */; };
+		3A91ECF55CD9491BACAFF3DC /* ProxyHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 205BAD49E88946DBB8154D4C /* ProxyHelper.swift */; };
+		497EEF9D3E5343AEB3251008 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 940BA9D4DE084901A530877F /* LaunchAtLogin.swift */; };
+		1C67DC5F4C934BC3A248D79F /* OpenZwebApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8456A78F03AE4A51A8BD8506 /* OpenZwebApp.swift */; };
+		D182A20EE1AB42459BC5D9FE /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84DE0E2ED77C466F93273C67 /* AppSettings.swift */; };
+		34B55AE911AD42E1A5797A68 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB65CDFB859487AA485E190 /* SettingsStore.swift */; };
+		711134F4BBAF44C9A40984C8 /* ConnectEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F220B44ABF943CC9B9709FD /* ConnectEngine.swift */; };
+		F7E6C3F2276E4536B7D6172A /* CoreBinaryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD926DCD35D497BB6795183 /* CoreBinaryManager.swift */; };
+		25EC18482FC548B5AA0F3E10 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 266FEFF9296E416B97C17CD5 /* CredentialStore.swift */; };
+		D85508BAF36E4B51A981DA16 /* CASWebAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA27F2FCDF2412DB3E200FA /* CASWebAuth.swift */; };
+		6DF56F1A77154E5EB55AABD0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B3AAD5F4F88423AAE0ECB7D /* ContentView.swift */; };
+		327E7BDC506D4AE69DCADD93 /* LoginPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19D7EA6E8EC844B7AF5CB196 /* LoginPanel.swift */; };
+		71335583399F45EBA04B394D /* ConnectedPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E030CDE5D975470AA79E7D7F /* ConnectedPanel.swift */; };
+		C3C37AE12CD741ECA3658FC8 /* CaptchaPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE70D560035845DE8CAAF48C /* CaptchaPanel.swift */; };
+		1F8A24ED9ADE438388EC8053 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4C99747CC634BC5A6D2A9DB /* SettingsView.swift */; };
+		6AE73204EC7649F6911441A6 /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 263E83CA07644245B6112502 /* LogView.swift */; };
+		1F7D1B5A897B402FA1CBEA51 /* CASPortalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44CCE1181516472BBE467DBB /* CASPortalSheet.swift */; };
+		3C998CC5D34E459984434C59 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 35C36F8D15B948EE9C773685 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		C1A2B3C4D5E64789A0B1C2D3 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		0FBA50C313D341AE8DED9FFF /* SparklineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparklineView.swift; sourceTree = "<group>"; };
+		025B609CFA2F4CB8B48E60CE /* OTPInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OTPInputView.swift; sourceTree = "<group>"; };
+		09560E3347F345229FEF7A9C /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
+		A91F0C2E8B1A4D6F9E3C7B2D /* SystemProxyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemProxyManager.swift; sourceTree = "<group>"; };
+		B8363A5ED13443048F04E17C /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		205BAD49E88946DBB8154D4C /* ProxyHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyHelper.swift; sourceTree = "<group>"; };
+		940BA9D4DE084901A530877F /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
+		371250C7FB624C55B0B2E32C /* OpenZweb.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenZweb.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8456A78F03AE4A51A8BD8506 /* OpenZwebApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenZwebApp.swift; sourceTree = "<group>"; };
+		84DE0E2ED77C466F93273C67 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
+		7BB65CDFB859487AA485E190 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		7F220B44ABF943CC9B9709FD /* ConnectEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectEngine.swift; sourceTree = "<group>"; };
+		9DD926DCD35D497BB6795183 /* CoreBinaryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreBinaryManager.swift; sourceTree = "<group>"; };
+		266FEFF9296E416B97C17CD5 /* CredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialStore.swift; sourceTree = "<group>"; };
+		7DA27F2FCDF2412DB3E200FA /* CASWebAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CASWebAuth.swift; sourceTree = "<group>"; };
+		4B3AAD5F4F88423AAE0ECB7D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		19D7EA6E8EC844B7AF5CB196 /* LoginPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginPanel.swift; sourceTree = "<group>"; };
+		E030CDE5D975470AA79E7D7F /* ConnectedPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectedPanel.swift; sourceTree = "<group>"; };
+		CE70D560035845DE8CAAF48C /* CaptchaPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptchaPanel.swift; sourceTree = "<group>"; };
+		A4C99747CC634BC5A6D2A9DB /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		263E83CA07644245B6112502 /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
+		44CCE1181516472BBE467DBB /* CASPortalSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CASPortalSheet.swift; sourceTree = "<group>"; };
+		35C36F8D15B948EE9C773685 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		56EEBCDA124748C5BA04DBC3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		974A5377BD834A0BB699E44E /* OpenZweb.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenZweb.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E8D2412C27E344A6947DDC62 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0DA59D6CFFA74227B33218C1 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				8456A78F03AE4A51A8BD8506 /* OpenZwebApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		1A3131DBECB44210B9876E46 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				84DE0E2ED77C466F93273C67 /* AppSettings.swift */,
+				7BB65CDFB859487AA485E190 /* SettingsStore.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		1E3D8996C48044FBBB998B0C /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				7F220B44ABF943CC9B9709FD /* ConnectEngine.swift */,
+				9DD926DCD35D497BB6795183 /* CoreBinaryManager.swift */,
+				C1A2B3C4D5E64789A0B1C2D3 /* UpdateChecker.swift */,
+				266FEFF9296E416B97C17CD5 /* CredentialStore.swift */,
+				940BA9D4DE084901A530877F /* LaunchAtLogin.swift */,
+				205BAD49E88946DBB8154D4C /* ProxyHelper.swift */,
+				09560E3347F345229FEF7A9C /* NetworkMonitor.swift */,
+				A91F0C2E8B1A4D6F9E3C7B2D /* SystemProxyManager.swift */,
+				7DA27F2FCDF2412DB3E200FA /* CASWebAuth.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		AD6D1DBF03CC4EC9B4B2CEAB /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				4B3AAD5F4F88423AAE0ECB7D /* ContentView.swift */,
+				19D7EA6E8EC844B7AF5CB196 /* LoginPanel.swift */,
+				E030CDE5D975470AA79E7D7F /* ConnectedPanel.swift */,
+				CE70D560035845DE8CAAF48C /* CaptchaPanel.swift */,
+				0FBA50C313D341AE8DED9FFF /* SparklineView.swift */,
+				025B609CFA2F4CB8B48E60CE /* OTPInputView.swift */,
+				A4C99747CC634BC5A6D2A9DB /* SettingsView.swift */,
+				B8363A5ED13443048F04E17C /* AboutView.swift */,
+				263E83CA07644245B6112502 /* LogView.swift */,
+				44CCE1181516472BBE467DBB /* CASPortalSheet.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		994A467DC91E43398CCA2635 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				35C36F8D15B948EE9C773685 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		973252229EDC4A689E71EB42 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				371250C7FB624C55B0B2E32C /* OpenZweb.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		23A4226AA7304DB78DBB846C /* OpenZweb */ = {
+			isa = PBXGroup;
+			children = (
+				0DA59D6CFFA74227B33218C1 /* App */,
+				1A3131DBECB44210B9876E46 /* Models */,
+				1E3D8996C48044FBBB998B0C /* Services */,
+				AD6D1DBF03CC4EC9B4B2CEAB /* Views */,
+				994A467DC91E43398CCA2635 /* Resources */,
+				56EEBCDA124748C5BA04DBC3 /* Info.plist */,
+				974A5377BD834A0BB699E44E /* OpenZweb.entitlements */,
+			);
+			path = OpenZweb;
+			sourceTree = "<group>";
+		};
+		2EB376EF68064EEC81446A5B = {
+			isa = PBXGroup;
+			children = (
+				23A4226AA7304DB78DBB846C /* OpenZweb */,
+				973252229EDC4A689E71EB42 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BE8022B1748E404893C09F4C /* OpenZweb */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F91EF79B8B7143918C4FCACE /* Build configuration list for PBXNativeTarget "OpenZweb" */;
+			buildPhases = (
+				59D9C03040864DDD91A53B6D /* Sources */,
+				E8D2412C27E344A6947DDC62 /* Frameworks */,
+				943471DC86D844B1AAE1155D /* Resources */,
+				893F3547D64942F79DB0EB53 /* Copy Core Engine */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenZweb;
+			productName = OpenZweb;
+			productReference = 371250C7FB624C55B0B2E32C /* OpenZweb.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1EA93AF2B7714436A36CF33D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 84A6D821E5DB46EF91C6E602 /* Build configuration list for PBXProject "OpenZweb" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				"zh-Hans",
+			);
+			mainGroup = 2EB376EF68064EEC81446A5B;
+			productRefGroup = 973252229EDC4A689E71EB42 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BE8022B1748E404893C09F4C /* OpenZweb */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		943471DC86D844B1AAE1155D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3C998CC5D34E459984434C59 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		59D9C03040864DDD91A53B6D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C2CF0D11EC29477E9D5B2CDC /* AboutView.swift in Sources */,
+				3A91ECF55CD9491BACAFF3DC /* ProxyHelper.swift in Sources */,
+				103BB3EAA2F0467ABFDAC1FC /* NetworkMonitor.swift in Sources */,
+				B82E1D3F9C2B4E7A0F4D8C1E /* SystemProxyManager.swift in Sources */,
+				497EEF9D3E5343AEB3251008 /* LaunchAtLogin.swift in Sources */,
+				1C67DC5F4C934BC3A248D79F /* OpenZwebApp.swift in Sources */,
+				D182A20EE1AB42459BC5D9FE /* AppSettings.swift in Sources */,
+				34B55AE911AD42E1A5797A68 /* SettingsStore.swift in Sources */,
+				711134F4BBAF44C9A40984C8 /* ConnectEngine.swift in Sources */,
+				F7E6C3F2276E4536B7D6172A /* CoreBinaryManager.swift in Sources */,
+				E4F5A6B7C8D94E0F1A2B3C4D /* UpdateChecker.swift in Sources */,
+				25EC18482FC548B5AA0F3E10 /* CredentialStore.swift in Sources */,
+				D85508BAF36E4B51A981DA16 /* CASWebAuth.swift in Sources */,
+				6DF56F1A77154E5EB55AABD0 /* ContentView.swift in Sources */,
+				327E7BDC506D4AE69DCADD93 /* LoginPanel.swift in Sources */,
+				71335583399F45EBA04B394D /* ConnectedPanel.swift in Sources */,
+				C3C37AE12CD741ECA3658FC8 /* CaptchaPanel.swift in Sources */,
+				EF0C6D06918A46CF853DDBCC /* SparklineView.swift in Sources */,
+				A5A6EFCB8F3C41ACBE4CC680 /* OTPInputView.swift in Sources */,
+				1F8A24ED9ADE438388EC8053 /* SettingsView.swift in Sources */,
+				6AE73204EC7649F6911441A6 /* LogView.swift in Sources */,
+				1F7D1B5A897B402FA1CBEA51 /* CASPortalSheet.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		893F3547D64942F79DB0EB53 /* Copy Core Engine */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			alwaysOutOfDate = 1;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Core/zju-connect",
+			);
+			name = "Copy Core Engine";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Core/zju-connect",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Bundle zju-connect if present\nCORE_SRC=\"${SRCROOT}/Core/zju-connect\"\nCORE_DST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Core\"\nif [ -x \"$CORE_SRC\" ]; then\n  mkdir -p \"$CORE_DST\"\n  cp -f \"$CORE_SRC\" \"$CORE_DST/zju-connect\"\n  chmod +x \"$CORE_DST/zju-connect\"\n  xattr -dr com.apple.quarantine \"$CORE_DST/zju-connect\" 2>/dev/null || true\n  echo \"Bundled Core/zju-connect\"\n  file \"$CORE_DST/zju-connect\" || true\nelse\n  echo \"note: Core/zju-connect not found; app can download at runtime\"\nfi\n# Bundle no-op open stub (suppress captcha browser)\nTOOLS_SRC=\"${SRCROOT}/Tools\"\nTOOLS_DST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Tools\"\nif [ -x \"$TOOLS_SRC/open\" ]; then\n  mkdir -p \"$TOOLS_DST\"\n  cp -f \"$TOOLS_SRC/open\" \"$TOOLS_DST/open\"\n  cp -f \"$TOOLS_SRC/xdg-open\" \"$TOOLS_DST/xdg-open\" 2>/dev/null || true\n  chmod +x \"$TOOLS_DST/open\" \"$TOOLS_DST/xdg-open\" 2>/dev/null || true\n  echo \"Bundled Tools/open stub\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		4594715EE220439795879419 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		131C653D6B5F4572A6FDABC9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		35A832C7E15A4B5A9972F6B1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = OpenZweb/OpenZweb.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenZweb/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = edu.zju.openzweb;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		7C79D6E671004581B5E742F0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = OpenZweb/OpenZweb.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = OpenZweb/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = edu.zju.openzweb;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		84A6D821E5DB46EF91C6E602 /* Build configuration list for PBXProject "OpenZweb" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4594715EE220439795879419 /* Debug */,
+				131C653D6B5F4572A6FDABC9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F91EF79B8B7143918C4FCACE /* Build configuration list for PBXNativeTarget "OpenZweb" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				35A832C7E15A4B5A9972F6B1 /* Debug */,
+				7C79D6E671004581B5E742F0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1EA93AF2B7714436A36CF33D /* Project object */;
+}

@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.1). Leave empty to use run id draft.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    runs-on: macos-14
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Download zju-connect (arm64 + universal packaging)
+        env:
+          # Prefer mirrors first for reliability in CI mirrors of GitHub assets
+          ZJU_CONNECT_TAG: v1.2.1
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/download-core.sh
+          # Download arm64 engine into Core/
+          ./Scripts/download-core.sh
+          file Core/zju-connect
+          test -x Core/zju-connect
+
+      - name: Build OpenZweb.app (arm64 Release)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project OpenZweb.xcodeproj \
+            -scheme OpenZweb \
+            -configuration Release \
+            -derivedDataPath build \
+            -arch arm64 \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+          APP="build/Build/Products/Release/OpenZweb.app"
+          test -d "$APP"
+          # Ensure core is present inside the bundle
+          if [ ! -x "$APP/Contents/Resources/Core/zju-connect" ]; then
+            echo "Core engine missing from app bundle" >&2
+            find "$APP/Contents" -name 'zju-connect' -o -type d -name Core | head -50
+            exit 1
+          fi
+          file "$APP/Contents/Resources/Core/zju-connect"
+          xattr -dr com.apple.quarantine "$APP" || true
+
+      - name: Package DMG
+        run: |
+          set -euo pipefail
+          chmod +x Scripts/package-dmg.sh
+          VERSION="${GITHUB_REF_NAME:-}"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -n "${{ inputs.tag }}" ]]; then
+            VERSION="${{ inputs.tag }}"
+          fi
+          VERSION="${VERSION#v}"
+          if [ -z "$VERSION" ]; then
+            VERSION="0.0.${GITHUB_RUN_NUMBER}"
+          fi
+          ./Scripts/package-dmg.sh \
+            --app "build/Build/Products/Release/OpenZweb.app" \
+            --version "$VERSION" \
+            --out "dist"
+          ls -lah dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenZweb-dmg
+          path: dist/*.dmg
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
+          name: OpenZweb ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') || contains(inputs.tag, '-') }}
+          generate_release_notes: true
+          files: |
+            dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

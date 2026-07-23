@@ -1,0 +1,3 @@
+#!/bin/sh
+# Suppress zju-connect captcha browser launch; OpenZweb hosts captcha in-app.
+exit 0
