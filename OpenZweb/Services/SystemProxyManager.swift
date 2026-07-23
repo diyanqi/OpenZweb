@@ -159,7 +159,8 @@ enum SystemProxyManager {
         socksBind: String,
         dnsServers: [String]?,
         manageProxy: Bool,
-        manageDNS: Bool
+        manageDNS: Bool,
+        extraBypassDomains: [String] = []
     ) throws {
         guard manageProxy || manageDNS else { return }
         guard let http = Endpoint.parse(httpBind), let socks = Endpoint.parse(socksBind) else {
@@ -196,7 +197,11 @@ enum SystemProxyManager {
         }
 
         var scriptLines: [String] = ["set -e"]
-        let bypass = "127.0.0.1 localhost *.local vpn.zju.edu.cn zjuam.zju.edu.cn"
+        var bypassParts = ["127.0.0.1", "localhost", "*.local", "vpn.zju.edu.cn", "zjuam.zju.edu.cn"]
+        for d in extraBypassDomains where !d.isEmpty {
+            if !bypassParts.contains(d) { bypassParts.append(d) }
+        }
+        let bypass = bypassParts.joined(separator: " ")
         for service in services {
             let s = shellQuote(service)
             if manageProxy {

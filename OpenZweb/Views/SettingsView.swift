@@ -41,29 +41,6 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("分流规则") {
-                    Text("白名单：强制走校园 VPN 的域名（写入 zju-connect custom_proxy_domain）")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextEditor(text: $store.settings.proxyAllowList)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(minHeight: 72, maxHeight: 120)
-                    Text("示例：science.org, nature.com 或每行一个")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-
-                    Text("黑名单：在 PAC / 系统分流中直连（不经本机 VPN 代理）")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 6)
-                    TextEditor(text: $store.settings.proxyDenyList)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(minHeight: 72, maxHeight: 120)
-                    Text("示例：localhost, *.local, music.163.com")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-
                 Section("高级") {
                     Toggle("Fake IP (TUN/aTrust)", isOn: $store.settings.fakeIP)
                     Toggle("TCP Tunnel", isOn: $store.settings.tcpTunnelMode)

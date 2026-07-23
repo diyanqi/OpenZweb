@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showLogs = false
     @State private var showAbout = false
+    @State private var showRoutingRules = false
 
     var body: some View {
         NavigationSplitView {
@@ -45,6 +46,10 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showAbout) {
             AboutView()
+        }
+        .sheet(isPresented: $showRoutingRules) {
+            RoutingRulesView()
+                .environmentObject(store)
         }
         .sheet(isPresented: smsPresented) {
             SMSOTPSheet()
@@ -189,7 +194,8 @@ struct ContentView: View {
 
             VStack(spacing: 8) {
                 sidebarButton("运行日志", icon: "list.bullet.rectangle") { showLogs = true }
-                sidebarButton("设置", icon: "slider.horizontal.3") { showSettings = true }
+                sidebarButton("分流规则", icon: "arrow.triangle.branch") { showRoutingRules = true }
+                sidebarButton("设置", icon: "gearshape") { showSettings = true }
                 sidebarButton("关于", icon: "info.circle") { showAbout = true }
             }
             .padding(16)

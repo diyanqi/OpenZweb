@@ -80,7 +80,7 @@ struct ConnectedPanel: View {
                     if monitor.isChecking {
                         ProgressView().controlSize(.small)
                     } else {
-                        Label("检测 IP", systemImage: "globe")
+                        Label("检测公网 IP", systemImage: "globe")
                     }
                 }
                 .buttonStyle(.bordered)
@@ -98,10 +98,34 @@ struct ConnectedPanel: View {
             )
             .frame(height: 92)
 
-            Text(monitor.lastCheckMessage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: 6) {
+                if let ip = monitor.publicIP {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("公网 IP")
+                            .foregroundStyle(.secondary)
+                        Text(ip)
+                            .font(.body.monospaced())
+                            .textSelection(.enabled)
+                    }
+                    .font(.callout)
+                }
+                if let loc = monitor.publicIPLocation, !loc.isEmpty {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("归属地")
+                            .foregroundStyle(.secondary)
+                        Text(loc)
+                            .textSelection(.enabled)
+                    }
+                    .font(.callout)
+                }
+                Text(monitor.lastCheckMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                Text(NetworkMonitor.geoDisclaimer)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(18)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -128,100 +152,65 @@ struct ConnectedPanel: View {
 
     private var endpointsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("接入信息")
-                    .font(.headline)
-                Spacer()
-                Picker("模式", selection: modeSelection) {
-                    Text("代理").tag(ConnectionMode.proxy)
-                    Text("TUN").tag(ConnectionMode.tun)
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 180)
-                .labelsHidden()
-                .disabled(engine.phase.isBusy)
-            }
+            Text("接入信息")
+                .font(.headline)
 
+            // Mode is fixed for this session — live TUN/proxy switch needs re-auth in zju-connect.
+            infoRow("模式", engine.activeMode == .tun ? "TUN 虚拟网卡" : "代理 (SOCKS5 / HTTP)")
             if engine.activeMode == .tun {
-                infoRow("模式", "TUN 虚拟网卡")
-                Text("大多数应用可直接访问内网。切换模式会短暂重连。")
-                    .font(.caption)
+                Text("系统级虚拟网卡；如需改为代理模式，请断开后在登录页切换再连接。")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                infoRow("SOCKS5", displaySocks)
-                infoRow("HTTP", displayHTTP)
-                if engine.systemProxyManaged {
-                    Label("已自动配置系统代理", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                } else {
-                    Text("未托管系统代理时可与 Clash 共存；校内论坛域名为 www.cc98.org。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("应用通过本机 SOCKS/HTTP 代理访问内网；如需 TUN，请断开后在登录页切换。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            infoRow("SOCKS5", effectiveSocks)
+            infoRow("HTTP", effectiveHTTP)
+            if let msg = pacMessage {
+                Text(msg).font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    private var modeSelection: Binding<ConnectionMode> {
-        Binding(
-            get: { engine.activeMode },
-            set: { newMode in
-                guard newMode != engine.activeMode else { return }
-                store.settings.connectionMode = newMode
-                engine.switchMode(to: newMode)
-            }
-        )
-    }
-
-    private var displaySocks: String {
+    private var effectiveSocks: String {
         store.settings.shareOnLAN
             ? ProxyHelper.lanBind(from: store.settings.socksBind)
             : store.settings.socksBind
     }
 
-    private var displayHTTP: String {
+    private var effectiveHTTP: String {
         store.settings.shareOnLAN
             ? ProxyHelper.lanBind(from: store.settings.httpBind)
             : store.settings.httpBind
     }
 
     private var lanCard: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Label("局域网共享", systemImage: "qrcode")
-                    .font(.headline)
-                Text("其他设备可将 SOCKS5/HTTP 指向本机局域网地址。")
+        VStack(alignment: .leading, spacing: 12) {
+            Label("局域网共享", systemImage: "antenna.radiowaves.left.and.right")
+                .font(.headline)
+            if let ip = ProxyHelper.primaryLANAddress() {
+                infoRow("本机局域网 IP", ip)
+            } else {
+                Text("未检测到局域网地址")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if let ip = ProxyHelper.primaryLANAddress() {
-                    Text(ip)
-                        .font(.system(.title3, design: .monospaced).weight(.semibold))
-                        .textSelection(.enabled)
-                }
-                Button("显示二维码 / 连接信息") { showLANShare = true }
-                    .buttonStyle(.borderedProminent)
             }
-            Spacer()
-            if let img = ProxyHelper.qrImage(from: ProxyHelper.lanSharePayload(
-                socksBind: store.settings.socksBind,
-                httpBind: store.settings.httpBind
-            ), dimension: 120) {
-                Image(nsImage: img)
-                    .interpolation(.none)
-                    .resizable()
-                    .frame(width: 120, height: 120)
-                    .padding(8)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 12))
-            }
+            infoRow("SOCKS5", effectiveSocks)
+            infoRow("HTTP", effectiveHTTP)
+            Text("其他设备请在同一网络下，将系统/App 代理指向上述地址与端口。二维码仅为纯文本，无法自动改系统设置，故仅展示连接信息。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Button("显示连接信息") { showLANShare = true }
+                .buttonStyle(.bordered)
         }
         .padding(18)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
-
 
     private var portalCard: some View {
         HStack(spacing: 14) {
@@ -315,33 +304,23 @@ struct LANShareSheet: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Text("局域网代理")
+            Text("局域网代理连接信息")
                 .font(.title2.weight(.semibold))
-            Text("手机/其他电脑可扫描或手动填写下列代理。请保证与本机同一 Wi‑Fi，并允许 macOS 防火墙通过。")
+            Text("请在其他设备上手动填写下列代理。需与本机同一 Wi‑Fi，并允许 macOS 防火墙通过。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 360)
 
-            if let img = ProxyHelper.qrImage(from: payload, dimension: 220) {
-                Image(nsImage: img)
-                    .interpolation(.none)
-                    .resizable()
-                    .frame(width: 220, height: 220)
-                    .padding(12)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 16))
-                    .shadow(radius: 8, y: 3)
-            }
-
             Text(payload)
-                .font(.system(.caption, design: .monospaced))
+                .font(.system(.body, design: .monospaced))
                 .textSelection(.enabled)
-                .padding(12)
+                .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
 
             HStack {
-                Button("复制") {
+                Button("复制全部") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(payload, forType: .string)
                 }

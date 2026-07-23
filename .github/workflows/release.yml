@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag (e.g. v1.0.1). Leave empty to use run id draft.'
+        description: 'Release tag (e.g. v1.0.2). Leave empty to build artifact only.'
         required: false
         default: ''
 
@@ -16,50 +16,58 @@ permissions:
 
 jobs:
   build-dmg:
+    # Need a runner image that ships Xcode 26.x
     runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select Xcode 26
         run: |
           set -euo pipefail
+          echo "Installed Xcode apps:"
           ls /Applications | grep -i Xcode || true
-          # Prefer the newest installed Xcode (macos-15 images ship 16.x).
+          # Prefer explicit 26.x installations, then default Xcode.app if it is 26.x
           CANDIDATES=(
-            /Applications/Xcode_16.4.app
-            /Applications/Xcode_16.3.app
-            /Applications/Xcode_16.2.app
-            /Applications/Xcode_16.1.app
-            /Applications/Xcode_16.0.app
-            /Applications/Xcode_16.app
+            /Applications/Xcode_26.2.app
+            /Applications/Xcode_26.1.app
+            /Applications/Xcode_26.0.app
+            /Applications/Xcode_26.app
             /Applications/Xcode.app
-            /Applications/Xcode_15.4.app
           )
           SELECTED=""
           for app in "${CANDIDATES[@]}"; do
             if [ -d "$app/Contents/Developer" ]; then
-              SELECTED="$app/Contents/Developer"
-              break
+              VER=$("$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null | head -1 || true)
+              echo "Candidate $app -> $VER"
+              if echo "$VER" | grep -Eq 'Xcode 26(\.|$)'; then
+                SELECTED="$app/Contents/Developer"
+                break
+              fi
             fi
           done
           if [ -z "$SELECTED" ]; then
-            echo "No Xcode found" >&2
+            echo "::error::Xcode 26.x is required for this project. None found on the runner."
+            # Dump versions for debugging
+            for app in /Applications/Xcode*.app; do
+              [ -d "$app" ] || continue
+              "$app/Contents/Developer/usr/bin/xcodebuild" -version 2>/dev/null || true
+            done
             exit 1
           fi
           echo "Using $SELECTED"
           sudo xcode-select -s "$SELECTED"
           xcodebuild -version
           swift --version
+          MAJOR=$(xcodebuild -version | awk '/Xcode/{print $2}' | cut -d. -f1)
+          test "$MAJOR" = "26"
 
-      - name: Download zju-connect (arm64 + universal packaging)
+      - name: Download zju-connect (arm64)
         env:
-          # Prefer mirrors first for reliability in CI mirrors of GitHub assets
           ZJU_CONNECT_TAG: v1.2.1
         run: |
           set -euo pipefail
           chmod +x Scripts/download-core.sh
-          # Download arm64 engine into Core/
           ./Scripts/download-core.sh
           file Core/zju-connect
           test -x Core/zju-connect
@@ -79,7 +87,6 @@ jobs:
             build
           APP="build/Build/Products/Release/OpenZweb.app"
           test -d "$APP"
-          # Ensure core is present inside the bundle
           if [ ! -x "$APP/Contents/Resources/Core/zju-connect" ]; then
             echo "Core engine missing from app bundle" >&2
             find "$APP/Contents" -name 'zju-connect' -o -type d -name Core | head -50
@@ -112,27 +119,34 @@ jobs:
           name: OpenZweb-dmg
           path: dist/*.dmg
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (Actions only)
         if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
         run: |
           set -euo pipefail
-          # Prefer gh with retries; softprops previously timed out on uploads.github.com.
-          for attempt in 1 2 3 4 5; do
+          # Fully automated: create/update release and upload DMG via gh (with retries).
+          # Do not rely on local/manual upload.
+          for attempt in 1 2 3 4 5 6; do
+            echo "Release publish attempt $attempt for $TAG"
             if gh release view "$TAG" >/dev/null 2>&1; then
-              echo "Release $TAG exists; uploading assets (attempt $attempt)"
               if gh release upload "$TAG" dist/*.dmg --clobber; then
+                # Ensure not left as draft
+                gh release edit "$TAG" --draft=false || true
+                echo "Uploaded assets to existing release $TAG"
                 exit 0
               fi
             else
-              echo "Creating release $TAG (attempt $attempt)"
-              if gh release create "$TAG" dist/*.dmg                   --title "OpenZweb $TAG"                   --generate-notes                   --verify-tag; then
+              if gh release create "$TAG" dist/*.dmg \
+                  --title "OpenZweb $TAG" \
+                  --generate-notes \
+                  --verify-tag; then
+                echo "Created release $TAG"
                 exit 0
               fi
             fi
-            sleep $((attempt * 5))
+            sleep $((attempt * 8))
           done
           echo "Failed to publish release after retries" >&2
           exit 1

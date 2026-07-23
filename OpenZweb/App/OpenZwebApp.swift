@@ -125,11 +125,6 @@ struct MenuBarMenu: View {
                     }
                 }
                 Divider()
-                Button(engine.activeMode == .proxy ? "切换到 TUN 模式" : "切换到代理模式") {
-                    let mode: ConnectionMode = engine.activeMode == .proxy ? .tun : .proxy
-                    store.settings.connectionMode = mode
-                    engine.switchMode(to: mode)
-                }
                 Button("打开浙大导航 zjuers.com") {
                     if let url = URL(string: "https://zjuers.com/") {
                         NSWorkspace.shared.open(url)

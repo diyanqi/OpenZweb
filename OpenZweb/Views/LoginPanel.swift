@@ -108,7 +108,7 @@ struct LoginPanel: View {
             Toggle("连接后向局域网共享代理", isOn: $store.settings.shareOnLAN)
                 .disabled(engine.phase.isBusy)
             if store.settings.shareOnLAN {
-                Text("将监听 0.0.0.0，其他设备可扫码使用本机代理。")
+                Text("将监听 0.0.0.0，其他设备可填写本机 IP 与端口使用代理。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

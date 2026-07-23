@@ -13,6 +13,8 @@ final class ConnectEngine: ObservableObject {
     @Published private(set) var smsError: String?
     /// Bumped to trigger OTP shake animation.
     @Published private(set) var smsShakeToken: Int = 0
+    /// True while waiting for SMS verification result (digits stay, input locked).
+    @Published private(set) var isSubmittingSMS = false
     @Published private(set) var lastError: String?
     @Published private(set) var coreBinaryPath: String?
     /// Warning or install hint for the protocol engine (arch mismatch / missing).
@@ -107,8 +109,11 @@ final class ConnectEngine: ObservableObject {
 
     func connect(settings: AppSettings, password: String) {
         guard phase == .idle || isFailed(phase) else { return }
+        // Disable connect button immediately (before any proxy check / IO).
+        phase = .preparing
         lastError = nil
         smsError = nil
+        isSubmittingSMS = false
         holdSMSSheet = false
         pendingSMSCode = nil
         smsRetryRelaunch = false
@@ -140,6 +145,7 @@ final class ConnectEngine: ObservableObject {
                 if let conflict = SystemProxyManager.detectActiveSystemProxy() {
                     proxyConflict = conflict
                     // Stay idle; ContentView shows alert.
+                    phase = .idle
                     return
                 }
                 proxyConflict = nil
@@ -169,7 +175,6 @@ final class ConnectEngine: ObservableObject {
             CredentialStore.deletePassword(account: settings.username)
         }
 
-        phase = .preparing
         appendLog("[OpenZweb] 启动 aTrust 协议引擎…")
         appendLog("[OpenZweb] \(settings.serverAddress):\(settings.serverPort) · \(settings.protocolKind.displayName) · \(settings.connectionMode.displayName)")
 
@@ -183,7 +188,8 @@ final class ConnectEngine: ObservableObject {
         }
     }
 
-    /// Switch proxy/TUN while connected by reconnecting with the new mode.
+    /// zju-connect cannot switch TUN/proxy without restarting the engine (re-auth).
+    /// Kept for potential future use; UI no longer exposes this while connected.
     func switchMode(to mode: ConnectionMode) {
         guard phase == .connected else {
             if var settings = lastSettings {
@@ -213,6 +219,7 @@ final class ConnectEngine: ObservableObject {
         pendingSMSCode = nil
         smsRetryRelaunch = false
         smsError = nil
+        isSubmittingSMS = false
         phase = .disconnecting
         appendLog("[OpenZweb] 正在断开连接…")
 
@@ -253,11 +260,13 @@ final class ConnectEngine: ObservableObject {
 
     func submitSMS() {
         guard phase == .waitingSMS || holdSMSSheet, !smsCode.isEmpty else { return }
+        guard !isSubmittingSMS else { return }
         let raw = smsCode
         let shouldSkip = smsAllowsSkipSecondary && skipSecondaryAuth
         let code = Self.prepareSMSCode(raw, skipSecondary: shouldSkip)
         smsError = nil
-        smsCode = ""
+        // Keep digits visible and lock input while verifying.
+        isSubmittingSMS = true
         holdSMSSheet = true
         phase = .waitingSMS
 
@@ -476,7 +485,8 @@ final class ConnectEngine: ObservableObject {
         // Only keys that exist in zju-connect's toml tags (unknown / wrong-type keys cause
         // "error parsing the config file").
         var lines: [String] = [
-            "server_address = \(q("\(settings.serverAddress):\(settings.serverPort)"))",
+            "server_address = \(q(settings.serverAddress))",
+            "server_port = \(settings.serverPort)",
             "protocol = \(q(settings.protocolKind.rawValue))",
             "auth_type = \(q(settings.authMethod.rawValue))",
             "login_domain = \(q(settings.loginDomain))",
@@ -499,8 +509,9 @@ final class ConnectEngine: ObservableObject {
         ]
         let allowDomains = settings.proxyAllowDomains
         if !allowDomains.isEmpty {
-            // zju-connect expects comma-separated domains that force RVPN proxy.
-            lines.append("custom_proxy_domain = \(q(allowDomains.joined(separator: ",")))")
+            // Go type is []string — must be a TOML array, not a comma-separated string.
+            let arr = allowDomains.map { q($0) }.joined(separator: ", ")
+            lines.append("custom_proxy_domain = [\(arr)]")
             appendLog("[OpenZweb] 代理白名单: \(allowDomains.joined(separator: ", "))")
         }
         let denyDomains = settings.proxyDenyDomains
@@ -698,6 +709,7 @@ final class ConnectEngine: ObservableObject {
         pendingSMSCode = nil
         smsRetryRelaunch = false
         smsError = nil
+        isSubmittingSMS = false
         captchaImage = nil
         phase = .connected
         connectedSince = Date()
@@ -713,6 +725,7 @@ final class ConnectEngine: ObservableObject {
     /// Never block the main actor with networksetup / admin prompts.
     private func applySystemProxyIfNeededAsync() {
         guard let settings = lastSettings else { return }
+        let extraBypass = settings.proxyDenyDomains
         let socks = SystemProxyManager.Endpoint.parse(settings.socksBind).map { "127.0.0.1:\($0.port)" } ?? settings.socksBind
         let http = SystemProxyManager.Endpoint.parse(settings.httpBind).map { "127.0.0.1:\($0.port)" } ?? settings.httpBind
         let manageProxy = settings.manageSystemProxy
@@ -749,7 +762,8 @@ final class ConnectEngine: ObservableObject {
                     socksBind: socks,
                     dnsServers: dnsForSystem,
                     manageProxy: manageProxy,
-                    manageDNS: manageDNS
+                    manageDNS: manageDNS,
+                    extraBypassDomains: extraBypass
                 )
                 guard let engine = self else { return }
                 await MainActor.run {
@@ -876,11 +890,18 @@ final class ConnectEngine: ObservableObject {
         let message = Self.friendlySMSError(from: line)
         lastError = message
         smsError = message
-        smsCode = ""
-        smsShakeToken += 1
+        isSubmittingSMS = false
         holdSMSSheet = true
         if phase != .connected {
             phase = .waitingSMS
+        }
+        // Shake with digits still visible, then clear for re-entry.
+        smsShakeToken += 1
+        let token = smsShakeToken
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard token == smsShakeToken, !isSubmittingSMS else { return }
+            smsCode = ""
         }
         appendLog("[OpenZweb] 短信验证码错误: \(message)")
     }

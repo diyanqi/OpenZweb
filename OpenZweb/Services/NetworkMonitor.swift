@@ -16,10 +16,14 @@ final class NetworkMonitor: ObservableObject {
     @Published private(set) var downBps: Double = 0
     @Published private(set) var upBps: Double = 0
     @Published private(set) var publicIP: String?
+    /// ISP / city / region / country from third-party geo API (reference only).
+    @Published private(set) var publicIPLocation: String?
     @Published private(set) var campusIP: String?
     @Published private(set) var campusReachable: Bool?
     @Published private(set) var lastCheckMessage: String = "尚未检测"
     @Published private(set) var isChecking = false
+    /// Disclaimer for third-party IP/geo lookups.
+    static let geoDisclaimer = "公网 IP 与归属地来自第三方 API，仅供参考，不代表真实物理位置。"
 
     private var task: Task<Void, Never>?
     private var lastIn: UInt64 = 0
@@ -76,11 +80,23 @@ final class NetworkMonitor: ObservableObject {
     func refreshIP(httpProxy: String?, socksProxy: String?) async {
         isChecking = true
         defer { isChecking = false }
-        publicIP = await Self.fetchText(
-            url: URL(string: "https://api.ipify.org")!,
-            httpProxy: httpProxy,
-            socksProxy: socksProxy
-        )
+        publicIPLocation = nil
+
+        // Prefer a single geo API that also returns the public IP.
+        if let geo = await Self.fetchGeo(httpProxy: httpProxy, socksProxy: socksProxy) {
+            publicIP = geo.ip
+            publicIPLocation = geo.location
+        } else {
+            publicIP = await Self.fetchText(
+                url: URL(string: "https://api.ipify.org")!,
+                httpProxy: httpProxy,
+                socksProxy: socksProxy
+            )
+            if let ip = publicIP {
+                publicIPLocation = await Self.fetchLocationOnly(ip: ip, httpProxy: httpProxy, socksProxy: socksProxy)
+            }
+        }
+
         // Lightweight campus probe (CC98)
         let campus = await Self.fetchStatus(
             url: URL(string: "https://www.cc98.org")!,
@@ -89,12 +105,79 @@ final class NetworkMonitor: ObservableObject {
         )
         campusReachable = campus
         if let publicIP {
-            lastCheckMessage = campus == true
-                ? "公网 \(publicIP) · 校内可达"
-                : "公网 \(publicIP) · 校内探测失败"
+            var parts = ["公网 \(publicIP)"]
+            if let publicIPLocation, !publicIPLocation.isEmpty {
+                parts.append(publicIPLocation)
+            }
+            parts.append(campus == true ? "校内可达" : "校内探测失败")
+            lastCheckMessage = parts.joined(separator: " · ")
         } else {
             lastCheckMessage = campus == true ? "校内可达" : "网络探测失败"
         }
+    }
+
+    private struct GeoResult {
+        let ip: String
+        let location: String?
+    }
+
+    /// Try multiple third-party endpoints (CN-friendly first).
+    nonisolated private static func fetchGeo(httpProxy: String?, socksProxy: String?) async -> GeoResult? {
+        let endpoints = [
+            "https://ipapi.co/json/",
+            "https://ipinfo.io/json",
+            "https://api.ip.sb/geoip"
+        ]
+        for urlString in endpoints {
+            guard let url = URL(string: urlString) else { continue }
+            guard let text = await fetchText(url: url, httpProxy: httpProxy, socksProxy: socksProxy),
+                  let data = text.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+            let ip = (obj["ip"] as? String)
+                ?? (obj["query"] as? String)
+                ?? ""
+            guard !ip.isEmpty else { continue }
+            let location = formatLocation(obj)
+            return GeoResult(ip: ip, location: location)
+        }
+        return nil
+    }
+
+    nonisolated private static func fetchLocationOnly(ip: String, httpProxy: String?, socksProxy: String?) async -> String? {
+        let endpoints = [
+            "https://ipapi.co/\(ip)/json/",
+            "https://ipinfo.io/\(ip)/json"
+        ]
+        for urlString in endpoints {
+            guard let url = URL(string: urlString) else { continue }
+            guard let text = await fetchText(url: url, httpProxy: httpProxy, socksProxy: socksProxy),
+                  let data = text.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+            if let loc = formatLocation(obj) { return loc }
+        }
+        return nil
+    }
+
+    nonisolated private static func formatLocation(_ obj: [String: Any]) -> String? {
+        func s(_ key: String) -> String? {
+            if let v = obj[key] as? String, !v.isEmpty, v != "undefined" { return v }
+            return nil
+        }
+        var parts: [String] = []
+        // ipapi.co / ipinfo style
+        for key in ["country_name", "country", "region", "regionName", "city"] {
+            if let v = s(key), !parts.contains(v) { parts.append(v) }
+        }
+        // org / ISP
+        if let org = s("org") ?? s("isp") ?? s("asn_organization") {
+            parts.append(org)
+        }
+        // ipinfo loc is "lat,lon" — skip as not human location name
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     // MARK: - Counters
