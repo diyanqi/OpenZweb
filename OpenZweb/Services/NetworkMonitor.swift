@@ -52,13 +52,13 @@ final class NetworkMonitor: ObservableObject {
                 guard dt > 0.2 else { continue }
                 let down = Double(dIn) / dt
                 let up = Double(dOut) / dt
+                guard let monitor = self else { return }
                 await MainActor.run {
-                    guard let self else { return }
-                    self.downBps = down
-                    self.upBps = up
-                    self.samples.append(Sample(date: now, downBps: down, upBps: up))
-                    if self.samples.count > self.maxSamples {
-                        self.samples.removeFirst(self.samples.count - self.maxSamples)
+                    monitor.downBps = down
+                    monitor.upBps = up
+                    monitor.samples.append(Sample(date: now, downBps: down, upBps: up))
+                    if monitor.samples.count > monitor.maxSamples {
+                        monitor.samples.removeFirst(monitor.samples.count - monitor.maxSamples)
                     }
                 }
             }

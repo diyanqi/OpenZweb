@@ -16,17 +16,41 @@ permissions:
 
 jobs:
   build-dmg:
-    runs-on: macos-14
-    env:
-      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Select Xcode
         run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          set -euo pipefail
+          ls /Applications | grep -i Xcode || true
+          # Prefer the newest installed Xcode (macos-15 images ship 16.x).
+          CANDIDATES=(
+            /Applications/Xcode_16.4.app
+            /Applications/Xcode_16.3.app
+            /Applications/Xcode_16.2.app
+            /Applications/Xcode_16.1.app
+            /Applications/Xcode_16.0.app
+            /Applications/Xcode_16.app
+            /Applications/Xcode.app
+            /Applications/Xcode_15.4.app
+          )
+          SELECTED=""
+          for app in "${CANDIDATES[@]}"; do
+            if [ -d "$app/Contents/Developer" ]; then
+              SELECTED="$app/Contents/Developer"
+              break
+            fi
+          done
+          if [ -z "$SELECTED" ]; then
+            echo "No Xcode found" >&2
+            exit 1
+          fi
+          echo "Using $SELECTED"
+          sudo xcode-select -s "$SELECTED"
           xcodebuild -version
+          swift --version
 
       - name: Download zju-connect (arm64 + universal packaging)
         env:

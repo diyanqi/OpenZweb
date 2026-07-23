@@ -340,8 +340,10 @@ final class ConnectEngine: ObservableObject {
         process.standardError = stderr
         attachOutputHandlers(stdout: stdout, stderr: stderr)
         process.terminationHandler = { [weak self] proc in
+            let status = proc.terminationStatus
+            guard let engine = self else { return }
             Task { @MainActor in
-                self?.handleTermination(status: proc.terminationStatus)
+                engine.handleTermination(status: status)
             }
         }
         try process.run()
@@ -369,8 +371,9 @@ final class ConnectEngine: ObservableObject {
         // Reader side is opened by the elevated shell.
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let handle = FileHandle(forWritingAtPath: fifo.path)
+            guard let engine = self else { return }
             Task { @MainActor in
-                self?.fifoWriteHandle = handle
+                engine.fifoWriteHandle = handle
             }
         }
 
@@ -415,9 +418,9 @@ final class ConnectEngine: ObservableObject {
             for _ in 0..<600 {
                 guard !Task.isCancelled else { return }
                 try? await Task.sleep(nanoseconds: 400_000_000)
-                guard let self else { return }
+                guard let engine = self else { return }
                 await MainActor.run {
-                    self.reloadCaptchaFromDisk()
+                    engine.reloadCaptchaFromDisk()
                     if let handle = try? FileHandle(forReadingFrom: logFile) {
                         defer { try? handle.close() }
                         try? handle.seek(toOffset: offset)
@@ -425,12 +428,12 @@ final class ConnectEngine: ObservableObject {
                         if !data.isEmpty {
                             offset += UInt64(data.count)
                             if let text = String(data: data, encoding: .utf8) {
-                                self.handleOutput(text)
+                                engine.handleOutput(text)
                             }
                         }
                     }
                 }
-                let phaseNow = await MainActor.run { self.phase }
+                let phaseNow = await MainActor.run { engine.phase }
                 switch phaseNow {
                 case .idle, .failed, .disconnecting:
                     return
@@ -447,12 +450,14 @@ final class ConnectEngine: ObservableObject {
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            Task { @MainActor in self?.handleOutput(text) }
+            guard let engine = self else { return }
+            Task { @MainActor in engine.handleOutput(text) }
         }
         stderr.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
-            Task { @MainActor in self?.handleOutput(text) }
+            guard let engine = self else { return }
+            Task { @MainActor in engine.handleOutput(text) }
         }
     }
 
@@ -531,10 +536,10 @@ final class ConnectEngine: ObservableObject {
             for _ in 0..<120 {
                 guard !Task.isCancelled else { return }
                 try? await Task.sleep(nanoseconds: 500_000_000)
-                guard let self else { return }
-                await MainActor.run { self.reloadCaptchaFromDisk() }
+                guard let engine = self else { return }
+                await MainActor.run { engine.reloadCaptchaFromDisk() }
                 let shouldStop = await MainActor.run { () -> Bool in
-                    switch self.phase {
+                    switch engine.phase {
                     case .connected, .idle, .failed: return true
                     default: return false
                     }
@@ -746,20 +751,22 @@ final class ConnectEngine: ObservableObject {
                     manageProxy: manageProxy,
                     manageDNS: manageDNS
                 )
+                guard let engine = self else { return }
                 await MainActor.run {
-                    guard let self else { return }
-                    self.systemProxyManaged = manageProxy
+                    engine.systemProxyManaged = manageProxy
                     if manageProxy {
-                        self.appendLog("[OpenZweb] 已设置系统代理 → HTTP \(http) · SOCKS \(socks)")
+                        engine.appendLog("[OpenZweb] 已设置系统代理 → HTTP \(http) · SOCKS \(socks)")
                     }
                     if manageDNS, let dnsForSystem {
-                        self.appendLog("[OpenZweb] 已设置系统 DNS → \(dnsForSystem.joined(separator: ", "))")
+                        engine.appendLog("[OpenZweb] 已设置系统 DNS → \(dnsForSystem.joined(separator: ", "))")
                     }
                 }
             } catch {
+                let message = error.localizedDescription
+                guard let engine = self else { return }
                 await MainActor.run {
-                    self?.systemProxyManaged = false
-                    self?.appendLog("[OpenZweb] 系统代理/DNS 配置失败：\(error.localizedDescription)")
+                    engine.systemProxyManaged = false
+                    engine.appendLog("[OpenZweb] 系统代理/DNS 配置失败：\(message)")
                 }
             }
         }
@@ -774,8 +781,9 @@ final class ConnectEngine: ObservableObject {
         appendLog("[OpenZweb] 正在后台恢复系统代理/DNS…")
         Task.detached(priority: .userInitiated) { [weak self] in
             SystemProxyManager.restoreAllIfNeeded()
+            guard let engine = self else { return }
             await MainActor.run {
-                self?.appendLog("[OpenZweb] 已恢复连接前的系统代理/DNS")
+                engine.appendLog("[OpenZweb] 已恢复连接前的系统代理/DNS")
             }
         }
     }
@@ -1100,13 +1108,13 @@ final class ConnectEngine: ObservableObject {
     private func scheduleReconnect() {
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
-            guard let self else { return }
-            appendLog("[OpenZweb] 5 秒后自动重连…")
+            guard let engine = self else { return }
+            engine.appendLog("[OpenZweb] 5 秒后自动重连…")
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             guard !Task.isCancelled else { return }
-            if let settings = lastSettings {
-                phase = .idle
-                connect(settings: settings, password: lastPassword)
+            if let settings = engine.lastSettings {
+                engine.phase = .idle
+                engine.connect(settings: settings, password: engine.lastPassword)
             }
         }
     }
