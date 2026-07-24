@@ -28,8 +28,22 @@ enum ProxyHelper {
 
         function isIPLiteral(host) {
             if (!host) return false;
-            // IPv4
-            if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+            // IPv4 digits-only check (avoid JS regex escapes inside Swift string)
+            var parts = host.split(".");
+            if (parts.length === 4) {
+                var ok = true;
+                for (var i = 0; i < 4; i++) {
+                    var p = parts[i];
+                    if (!p || p.length > 3) { ok = false; break; }
+                    for (var j = 0; j < p.length; j++) {
+                        var c = p.charCodeAt(j);
+                        if (c < 48 || c > 57) { ok = false; break; }
+                    }
+                    if (!ok) break;
+                    if (parseInt(p, 10) > 255) { ok = false; break; }
+                }
+                if (ok) return true;
+            }
             // rough IPv6
             if (host.indexOf(":") >= 0) return true;
             return false;
