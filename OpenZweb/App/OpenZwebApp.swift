@@ -55,18 +55,21 @@ struct OpenZwebApp: App {
                 .frame(width: 560, height: 620)
         }
 
-        MenuBarExtra {
+        // Menu bar keeps compact SF Symbols (not the full app icon).
+        MenuBarExtra("OpenZweb", systemImage: menuBarSymbol) {
             MenuBarMenu()
                 .environmentObject(engine)
                 .environmentObject(store)
                 .environmentObject(updater)
-        } label: {
-            Image("BrandMark")
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 18, height: 18)
-                .accessibilityLabel("OpenZweb")
+        }
+    }
+
+    private var menuBarSymbol: String {
+        switch engine.phase {
+        case .connected: return "shield.checkered"
+        case .failed: return "shield.slash"
+        case .waitingCaptcha, .waitingSMS: return "shield.lefthalf.filled"
+        default: return "shield.lefthalf.filled"
         }
     }
 

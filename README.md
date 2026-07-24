@@ -1,4 +1,22 @@
-# OpenZweb
+<p align="center">
+  <img src="docs/assets/logo.png" alt="OpenZweb" width="128" height="128">
+</p>
+
+<h1 align="center">OpenZweb</h1>
+
+<p align="center">
+  浙江大学校园 VPN 原生 <b>macOS</b> 客户端 · 深信服 <b>aTrust</b> 协议<br>
+  基于 <a href="https://github.com/Mythologyli/zju-connect">zju-connect</a> · 兼容 <a href="https://github.com/chenx-dust/EZ4Connect">EZ4Connect</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/diyanqi/OpenZweb/releases"><img alt="Release" src="https://img.shields.io/github/v/release/diyanqi/OpenZweb?include_prereleases&style=flat-square"></a>
+  <a href="https://github.com/diyanqi/OpenZweb/actions"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/diyanqi/OpenZweb/release.yml?style=flat-square&label=DMG"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/macOS-14%2B-black?style=flat-square">
+  <img alt="Arch" src="https://img.shields.io/badge/arch-arm64-blue?style=flat-square">
+</p>
+
+---
 
 > **免责声明**
 >
@@ -7,9 +25,13 @@
 > 使用本软件产生的账号风险、服务封禁、数据安全问题等，均由使用者自行承担。作者与贡献者不提供任何明示或默示担保，也不对使用后果负责。  
 > **请勿用于任何违反校规、法律或服务协议的行为。**
 
-浙江大学校园 VPN 原生 **macOS** 客户端（SwiftUI），对接深信服 **aTrust** 协议，兼容 [EZ4Connect](https://github.com/chenx-dust/EZ4Connect) / [zju-connect](https://github.com/Mythologyli/zju-connect) 生态。
-
 学号密码登录后，通过 **SOCKS5/HTTP 代理** 或 **TUN 虚拟网卡** 访问校内网。默认服务器：`vpn.zju.edu.cn`。
+
+## 界面预览
+
+<p align="center">
+  <img src="docs/screenshots/app-main.png" alt="OpenZweb 主界面" width="780">
+</p>
 
 ---
 
@@ -41,27 +63,28 @@ sudo xattr -dr com.apple.quarantine /Applications/OpenZweb.app
 
 > 发行版 DMG 会尽量做 ad-hoc 签名并清理隔离属性；若浏览器仍给下载文件打上 quarantine，用上面命令即可。
 
+---
 
 ## 功能
 
-- aTrust / EasyConnect 协议（引擎：`zju-connect`）
+- aTrust / EasyConnect 协议（引擎：`zju-connect`，DMG 已内置）
 - 学号密码 · 图形人机验证（应用内 WebView）· 短信 OTP
-- **代理模式**（默认，无需管理员）/ **TUN 模式**（需管理员，系统级路由）
-- 连接后可切换代理 / TUN；菜单栏快捷操作
-- 系统代理自动管理（可关，便于与其他代理软件共存）
-- 局域网共享代理（0.0.0.0 + 二维码）
-- 分流：**白名单**（强制走 VPN）/ **黑名单**（PAC 直连）
+- **代理模式**（默认，无需管理员）/ **TUN 模式**（需管理员）
+- 系统代理自动管理（可关，便于与 Clash 等共存）
+- 局域网共享代理（展示本机连接信息，供其他设备填写）
+- 独立 **分流规则** 页：白名单（强制走 VPN）/ 黑名单（系统代理绕过）
 - 短信二次认证：可选「跳过以后的短信验证」（见下文）
 - 启动检查更新（仅提示，不自动安装；大陆镜像优先）
-- 钥匙串记住密码 · 实时网速 · IP 检测 · 浙大导航入口
+- 钥匙串记住密码 · 实时网速 · 公网 IP/归属地 · 浙大导航入口
+- 菜单栏快捷操作（托盘为系统小图标）
 
 ---
 
 ## 环境
 
 - macOS 14+
-- Xcode 15+（本地编译）
 - Apple Silicon（arm64）优先；Release DMG 由 GitHub Actions 构建
+- 本地编译建议 Xcode 26.x
 
 ---
 
@@ -120,12 +143,12 @@ curl -x socks5h://127.0.0.1:1080 https://www.cc98.org
 
 ## 分流规则
 
-**设置 → 分流规则**
+侧栏 **分流规则**（修改后重新连接生效）：
 
 | 类型 | 作用 |
 |------|------|
-| 白名单 | 写入 zju-connect `custom_proxy_domain`，强制走校园 VPN |
-| 黑名单 | 写入导出的 PAC，匹配域名直连 |
+| 白名单 | 写入 zju-connect `custom_proxy_domain`（TOML 数组），强制走校园 VPN |
+| 黑名单 | 写入系统代理绕过列表 / 导出 PAC 中的直连域名 |
 
 支持逗号或换行分隔，如 `science.org, nature.com`。
 
@@ -190,11 +213,14 @@ xcodebuild -project OpenZweb.xcodeproj -scheme OpenZweb -configuration Release \
 ## 项目结构
 
 ```
-OpenZweb/           # SwiftUI 应用
-Core/               # zju-connect 二进制（本地/CI 放入，不强制进 git）
-Scripts/            # download-core / package-dmg / 图标
-Tools/              # 空 open 桩，抑制人机验证弹系统浏览器
-.github/workflows/  # Release DMG
+OpenZweb/              # SwiftUI 应用
+docs/assets/           # README 图标
+docs/screenshots/      # 界面截图
+Core/                  # zju-connect 二进制（本地/CI 放入）
+Scripts/               # download-core / package-dmg 等
+Tools/                 # 空 open 桩，抑制人机验证弹系统浏览器
+.github/workflows/     # Release DMG
+icons/                 # 源图标（Icon Composer）
 ```
 
 ---

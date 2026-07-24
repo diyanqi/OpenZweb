@@ -7,3 +7,6 @@ Core/zju-connect
 Core/*.tar.gz
 *.log
 .idea/
+
+# local macOS screenshots at repo root (use docs/screenshots/)
+/截屏*.png
