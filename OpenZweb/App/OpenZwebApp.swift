@@ -55,20 +55,18 @@ struct OpenZwebApp: App {
                 .frame(width: 560, height: 620)
         }
 
-        MenuBarExtra("OpenZweb", systemImage: menuBarSymbol) {
+        MenuBarExtra {
             MenuBarMenu()
                 .environmentObject(engine)
                 .environmentObject(store)
                 .environmentObject(updater)
-        }
-    }
-
-    private var menuBarSymbol: String {
-        switch engine.phase {
-        case .connected: return "shield.checkered"
-        case .failed: return "shield.slash"
-        case .waitingCaptcha, .waitingSMS: return "shield.lefthalf.filled"
-        default: return "shield.lefthalf.filled"
+        } label: {
+            Image("BrandMark")
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 18, height: 18)
+                .accessibilityLabel("OpenZweb")
         }
     }
 

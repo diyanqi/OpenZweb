@@ -13,6 +13,35 @@
 
 ---
 
+## 打开提示「已损坏，无法打开」怎么办？
+
+从 GitHub Releases 下载的应用 **未经过 Apple 公证**（社区开源构建），macOS Gatekeeper 有时会误报：
+
+> “OpenZweb”已损坏，无法打开。你应该将它移到废纸篓。
+
+这不是安装包真的损坏，而是隔离属性 / 未公证签名触发的保护。任选一种方式：
+
+**方式一（推荐，终端一行）：**
+
+```bash
+# 若装在「应用程序」：
+sudo xattr -dr com.apple.quarantine /Applications/OpenZweb.app
+
+# 若还在下载目录，把路径改成实际 .app 位置，例如：
+# xattr -dr com.apple.quarantine ~/Downloads/OpenZweb.app
+```
+
+然后重新双击打开。
+
+**方式二（图形界面）：**
+
+1. 打开「系统设置 → 隐私与安全性」  
+2. 若底部出现「仍要打开 OpenZweb」，点 **仍要打开**  
+3. 或在 Finder 中 **右键 / 双指点按** OpenZweb.app → **打开** → 确认打开  
+
+> 发行版 DMG 会尽量做 ad-hoc 签名并清理隔离属性；若浏览器仍给下载文件打上 quarantine，用上面命令即可。
+
+
 ## 功能
 
 - aTrust / EasyConnect 协议（引擎：`zju-connect`）

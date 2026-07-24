@@ -1,0 +1,8 @@
+{
+  "images" : [
+    { "filename" : "brand_128.png", "idiom" : "universal", "scale" : "1x" },
+    { "filename" : "brand_256.png", "idiom" : "universal", "scale" : "2x" },
+    { "filename" : "brand_512.png", "idiom" : "universal", "scale" : "3x" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}

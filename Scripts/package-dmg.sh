@@ -27,9 +27,20 @@ trap cleanup EXIT
 
 APP_NAME="$(basename "$APP")"
 cp -R "$APP" "$STAGE/$APP_NAME"
+
+# Strip quarantine and ad-hoc sign so Gatekeeper is less likely to report
+# "OpenZweb is damaged and can't be opened".
+xattr -cr "$STAGE/$APP_NAME" 2>/dev/null || true
+# Nested binary first
+if [ -x "$STAGE/$APP_NAME/Contents/Resources/Core/zju-connect" ]; then
+  codesign --force --sign - --timestamp=none \
+    "$STAGE/$APP_NAME/Contents/Resources/Core/zju-connect" 2>/dev/null || true
+fi
+codesign --force --deep --sign - --timestamp=none "$STAGE/$APP_NAME" 2>/dev/null || true
+codesign --verify --verbose=1 "$STAGE/$APP_NAME" 2>/dev/null || true
+
 ln -s /Applications "$STAGE/Applications"
 
-# Optional background-less compact layout
 DMG_RW="$OUT_DIR/OpenZweb-${VERSION}-rw.dmg"
 DMG_FINAL="$OUT_DIR/OpenZweb-${VERSION}-macos-arm64.dmg"
 rm -f "$DMG_RW" "$DMG_FINAL"
@@ -43,6 +54,9 @@ hdiutil create \
 
 hdiutil convert "$DMG_RW" -format UDZO -imagekey zlib-level=9 -o "$DMG_FINAL" >/dev/null
 rm -f "$DMG_RW"
+
+# Also clear quarantine on the DMG itself (best effort for local builds)
+xattr -cr "$DMG_FINAL" 2>/dev/null || true
 
 echo "Created $DMG_FINAL"
 ls -lah "$DMG_FINAL"

@@ -93,7 +93,14 @@ jobs:
             exit 1
           fi
           file "$APP/Contents/Resources/Core/zju-connect"
-          xattr -dr com.apple.quarantine "$APP" || true
+          # Ad-hoc sign + strip quarantine so downloaded builds are less likely
+          # to show macOS "is damaged and can't be opened".
+          xattr -cr "$APP" || true
+          if [ -x "$APP/Contents/Resources/Core/zju-connect" ]; then
+            codesign --force --sign - --timestamp=none "$APP/Contents/Resources/Core/zju-connect" || true
+          fi
+          codesign --force --deep --sign - --timestamp=none "$APP" || true
+          codesign --verify --verbose=1 "$APP" || true
 
       - name: Package DMG
         run: |

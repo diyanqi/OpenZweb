@@ -16,25 +16,14 @@ struct AboutView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.78, green: 0.18, blue: 0.22),
-                                    Color(red: 0.45, green: 0.08, blue: 0.14)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 88, height: 88)
-                        .shadow(color: Color.red.opacity(0.28), radius: 12, y: 5)
-                    Image(systemName: "shield.lefthalf.filled")
-                        .font(.system(size: 40, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-                .padding(.top, 8)
+                Image("BrandMark")
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 96, height: 96)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .shadow(color: .black.opacity(0.18), radius: 12, y: 5)
+                    .padding(.top, 8)
 
                 Text("OpenZweb")
                     .font(.system(.title, design: .rounded).weight(.bold))

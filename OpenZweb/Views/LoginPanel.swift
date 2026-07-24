@@ -36,19 +36,13 @@ struct LoginPanel: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            Image(systemName: "building.columns.fill")
-                .font(.system(size: 42, weight: .medium))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.85, green: 0.25, blue: 0.28),
-                            Color(red: 0.55, green: 0.1, blue: 0.18)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .symbolRenderingMode(.hierarchical)
+            Image("BrandMark")
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 72, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
             Text("浙江大学校内网")
                 .font(.system(.largeTitle, design: .rounded).weight(.bold))
             Text("深信服 aTrust · 优雅接入校园 VPN")

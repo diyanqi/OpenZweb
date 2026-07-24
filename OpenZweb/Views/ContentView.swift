@@ -122,24 +122,14 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.78, green: 0.18, blue: 0.22),
-                                        Color(red: 0.45, green: 0.08, blue: 0.14)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                    Image("BrandMark")
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(contentMode: .fit)
                             .frame(width: 44, height: 44)
-                            .shadow(color: Color.red.opacity(0.25), radius: 10, y: 4)
-                        Image(systemName: "shield.lefthalf.filled")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                    
                     VStack(alignment: .leading, spacing: 2) {
                         Text("OpenZweb")
                             .font(.system(.title3, design: .rounded).weight(.bold))
