@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Combine
+import Darwin
 
 @MainActor
 final class ConnectEngine: ObservableObject {
@@ -16,6 +17,8 @@ final class ConnectEngine: ObservableObject {
     /// True while waiting for SMS verification result (digits stay, input locked).
     @Published private(set) var isSubmittingSMS = false
     @Published private(set) var lastError: String?
+    /// One-shot failure dialog (no auto-retry). Cleared when user dismisses.
+    @Published var failureDialogMessage: String?
     @Published private(set) var coreBinaryPath: String?
     /// Warning or install hint for the protocol engine (arch mismatch / missing).
     @Published private(set) var coreBinaryNote: String?
@@ -31,6 +34,9 @@ final class ConnectEngine: ObservableObject {
     private var outputBuffer = ""
     private var reconnectTask: Task<Void, Never>?
     private var captchaPollTask: Task<Void, Never>?
+    private var proxyProbeTask: Task<Void, Never>?
+    /// Password step OK; tunnel may still need SMS / captcha.
+    private var passwordAuthSucceeded = false
     private var lastPassword: String = ""
     private var lastSettings: AppSettings?
     private var runtimeConfigURL: URL?
@@ -99,6 +105,26 @@ final class ConnectEngine: ObservableObject {
         proxyConflict = nil
     }
 
+    func dismissFailureDialog() {
+        failureDialogMessage = nil
+    }
+
+    /// Present a failure dialog once and cancel any pending reconnect.
+    private func presentFailure(_ message: String, log: Bool = true) {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        lastError = message
+        failureDialogMessage = message
+        if case .failed = phase {
+            // keep
+        } else {
+            phase = .failed(message)
+        }
+        if log {
+            appendLog("[OpenZweb] \(message)")
+        }
+    }
+
     func refreshCoreBinary() {
         if let info = CoreBinaryManager.resolveBinary() {
             coreBinaryPath = info.url.path
@@ -127,6 +153,12 @@ final class ConnectEngine: ObservableObject {
     }
 
     func connect(settings: AppSettings, password: String) {
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        failureDialogMessage = nil
+        passwordAuthSucceeded = false
+        proxyProbeTask?.cancel()
+        proxyProbeTask = nil
         guard phase == .idle || isFailed(phase) else { return }
         // Disable connect button immediately (before any proxy check / IO).
         phase = .preparing
@@ -309,6 +341,9 @@ final class ConnectEngine: ObservableObject {
             } else {
                 appendLog("[OpenZweb] " + L10n.t("log.sms_sent"))
             }
+            // After OTP the engine may open SOCKS/HTTP without a clear log line.
+            passwordAuthSucceeded = true
+            startProxyReadyProbe()
             return
         }
 
@@ -365,11 +400,12 @@ final class ConnectEngine: ObservableObject {
         elevated = false
         let process = Process()
         process.executableURL = binary
+        // Do NOT pass -auto-detect-interface: older zju-connect builds treat it as
+        // fatal ("flag provided but not defined") and dump -h usage text, which used
+        // to be mis-detected as "connected". Prefer config-only / default routing.
         process.arguments = [
             "-config", configURL.path,
-            "-graph-code-file", CoreBinaryManager.captchaImageURL.path,
-            // Avoid routing aTrust control plane through Clash/Surge TUN / wrong iface.
-            "-auto-detect-interface"
+            "-graph-code-file", CoreBinaryManager.captchaImageURL.path
         ]
         process.environment = Self.sanitizedProcessEnvironment()
 
@@ -536,8 +572,7 @@ final class ConnectEngine: ObservableObject {
             "add_route = \(settings.addRoute)",
             "dns_hijack = \(settings.dnsHijack)",
             "fake_ip = \(settings.fakeIP)",
-            "tcp_tunnel_mode = \(settings.tcpTunnelMode)",
-            "auto_detect_interface = true"
+            "tcp_tunnel_mode = \(settings.tcpTunnelMode)"
         ]
         let allowDomains = settings.proxyAllowDomains
         if !allowDomains.isEmpty {
@@ -703,6 +738,19 @@ final class ConnectEngine: ObservableObject {
             smsRetryRelaunch = false
         }
 
+        // Track password success (not full tunnel yet).
+        if lower.contains("password-based authentication succeeded") {
+            passwordAuthSucceeded = true
+            startProxyReadyProbe()
+        }
+
+        // After secondary SMS is accepted the engine continues silently — keep probing.
+        if passwordAuthSucceeded || phase == .waitingSMS || phase == .authenticating || phase == .connecting {
+            if lower.contains("authcheck") || lower.contains("reportenv") || lower.contains("resource") {
+                startProxyReadyProbe()
+            }
+        }
+
         // Real success signals only — never match "check tun mode cap" etc.
         if Self.looksLikeAuthenticated(lower) {
             markConnected(reason: trimmed)
@@ -714,17 +762,22 @@ final class ConnectEngine: ObservableObject {
             return
         }
 
-        // Hard auth / setup failures (do not mark connected)
+        // Hard auth / setup failures (do not mark connected) — never auto-retry here.
         if Self.looksLikeAuthFailure(lower) {
-            lastError = Self.friendlyAuthError(from: trimmed)
+            let message = Self.friendlyAuthError(from: trimmed)
             holdSMSSheet = false
             pendingSMSCode = nil
             smsRetryRelaunch = false
-            // Stay in failed once process dies; surface message immediately.
+            didAuthenticate = false
+            reconnectTask?.cancel()
+            reconnectTask = nil
+            lastError = message
+            // Defer dialog to termination for process-exit cases; for CLI usage dumps
+            // mark failed immediately so UI doesn't flash "connected".
             if phase != .connected {
-                phase = .failed(lastError!)
+                phase = .failed(message)
             }
-            appendLog("[OpenZweb] " + L10n.format("log.auth_fail", lastError!))
+            appendLog("[OpenZweb] " + L10n.format("log.auth_fail", message))
         }
 
         // Fake-IP / proxy leak hint
@@ -735,6 +788,8 @@ final class ConnectEngine: ObservableObject {
 
     private func markConnected(reason: String) {
         guard phase != .connected else { return }
+        proxyProbeTask?.cancel()
+        proxyProbeTask = nil
         didAuthenticate = true
         captchaSatisfied = true
         holdSMSSheet = false
@@ -889,7 +944,118 @@ final class ConnectEngine: ObservableObject {
         return URL(string: raw)
     }
 
+    /// When auth finished, zju-connect may not print a clear "listening" line.
+    /// Probe local SOCKS/HTTP binds so we still enter .connected reliably.
+    private func startProxyReadyProbe() {
+        guard let settings = lastSettings else { return }
+        if proxyProbeTask != nil { return }
+        // TUN mode has no local socks necessarily in the same way — skip.
+        if settings.tunMode { return }
+        let socks = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.socksBind) : settings.socksBind
+        let http = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.httpBind) : settings.httpBind
+        proxyProbeTask = Task { [weak self] in
+            for _ in 0..<60 {
+                guard !Task.isCancelled else { return }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard let engine = self else { return }
+                let ready = await MainActor.run { () -> Bool in
+                    switch engine.phase {
+                    case .connected, .idle, .failed, .disconnecting:
+                        return true // stop probe
+                    case .waitingCaptcha:
+                        return false // user still solving captcha
+                    case .waitingSMS:
+                        // While user is typing OTP, do not connect yet.
+                        // After submit (isSubmittingSMS), ports may come up — allow probe.
+                        if !engine.isSubmittingSMS { return false }
+                    default:
+                        break
+                    }
+                    let socksUp = Self.isLocalEndpointOpen(socks)
+                    let httpUp = Self.isLocalEndpointOpen(http)
+                    if socksUp || httpUp {
+                        engine.markConnected(reason: "local proxy port open")
+                        return true
+                    }
+                    return false
+                }
+                if ready {
+                    await MainActor.run { self?.proxyProbeTask = nil }
+                    return
+                }
+            }
+            await MainActor.run { self?.proxyProbeTask = nil }
+        }
+    }
+
+    private static func isLocalEndpointOpen(_ bind: String) -> Bool {
+        guard let endpoint = SystemProxyManager.Endpoint.parse(bind) else { return false }
+        let host: String
+        if endpoint.host.isEmpty || endpoint.host == "0.0.0.0" || endpoint.host == "::" || endpoint.host == "*" {
+            host = "127.0.0.1"
+        } else {
+            host = endpoint.host
+        }
+        var hints = addrinfo(
+            ai_flags: 0,
+            ai_family: AF_UNSPEC,
+            ai_socktype: SOCK_STREAM,
+            ai_protocol: 0,
+            ai_addrlen: 0,
+            ai_canonname: nil,
+            ai_addr: nil,
+            ai_next: nil
+        )
+        var result: UnsafeMutablePointer<addrinfo>?
+        let portStr = String(endpoint.port)
+        guard getaddrinfo(host, portStr, &hints, &result) == 0, let first = result else { return false }
+        defer { freeaddrinfo(result) }
+        let fd = socket(first.pointee.ai_family, first.pointee.ai_socktype, first.pointee.ai_protocol)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        let flags = fcntl(fd, F_GETFL, 0)
+        _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+        let rc = Darwin.connect(fd, first.pointee.ai_addr, first.pointee.ai_addrlen)
+        if rc == 0 { return true }
+        if errno == EINPROGRESS {
+            var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+            let pr = Darwin.poll(&pfd, 1, 120)
+            if pr > 0, (pfd.revents & Int16(POLLOUT)) != 0 {
+                var err: Int32 = 0
+                var len = socklen_t(MemoryLayout<Int32>.size)
+                if getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0, err == 0 {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /// Fatal CLI / config errors that must fail the session (not mere help lines).
+    private static func looksLikeCLIUsageOrFatal(_ lower: String) -> Bool {
+        if lower.contains("flag provided but not defined") { return true }
+        if lower.hasPrefix("usage of") || lower.contains("usage of ") { return true }
+        if lower.contains("error parsing the config file") { return true }
+        return false
+    }
+
+    /// Help-text noise from `zju-connect -h` dumps — never treat as tunnel-up.
+    private static func looksLikeHelpNoise(_ lower: String) -> Bool {
+        if looksLikeCLIUsageOrFatal(lower) { return true }
+        if lower.contains("the address") && lower.contains("listens on") { return true }
+        if lower.contains("(default ") || lower.contains("(default:") { return true }
+        if lower.contains("e.g.") && (lower.contains("127.0.0.1") || lower.contains("socks") || lower.contains("http")) {
+            return true
+        }
+        // Flag name lines like "-socks-bind string"
+        if lower.hasPrefix("-") && !lower.contains("error") { return true }
+        return false
+    }
+
     private static func looksLikeAuthenticated(_ lower: String) -> Bool {
+        // Never treat CLI help / unknown-flag dumps as success.
+        if looksLikeHelpNoise(lower) { return false }
+
         if lower.contains("login success") || lower.contains("登录成功") {
             return true
         }
@@ -903,14 +1069,18 @@ final class ConnectEngine: ObservableObject {
         if lower.contains("check tun mode") { return false }
         if lower.contains("sms") { return false }
 
-        if lower.contains("socks") && (lower.contains("listen") || lower.contains("start")) {
-            return true
-        }
-        if lower.contains("http") && lower.contains("listen") && lower.contains("proxy") {
-            return true
-        }
+        // Real runtime listen notices (not help text "The address … listens on").
+        if lower.contains("socks") && lower.contains("listening") { return true }
+        if lower.contains("socks5") && lower.contains("started") { return true }
+        if lower.contains("http") && lower.contains("listening") && lower.contains("proxy") { return true }
+        if lower.contains("http server") && lower.contains("start") { return true }
+        if lower.contains("proxy server") && (lower.contains("start") || lower.contains("listen")) { return true }
         // TUN ready (real device bring-up, not capability check)
         if lower.contains("tun device") || lower.contains("created tun") || lower.contains("interface up") {
+            return true
+        }
+        // zju-connect often logs Start ZJU Connect then later success; require explicit ready signals.
+        if lower.contains("vpn connected") || lower.contains("tunnel established") || lower.contains("connected to server") {
             return true
         }
         return false
@@ -1048,6 +1218,7 @@ final class ConnectEngine: ObservableObject {
     private static func looksLikeAuthFailure(_ lower: String) -> Bool {
         // SMS wrong-code is handled as a soft failure.
         if looksLikeSMSFailure(lower) { return false }
+        if looksLikeCLIUsageOrFatal(lower) { return true }
         if lower.contains("login error") { return true }
         if lower.contains("vpn client setup error") { return true }
         if lower.contains("ticket is empty") { return true }
@@ -1095,6 +1266,15 @@ final class ConnectEngine: ObservableObject {
         if lower.contains("198.18") || lower.contains("can't assign") {
             return "无法连接 VPN 服务器（疑似系统代理/Fake-IP）。请让 vpn.zju.edu.cn 直连后重试。"
         }
+        if lower.contains("flag provided but not defined") {
+            return "协议引擎版本过旧或不兼容（不支持当前启动参数）。请在应用内重新下载内核，或替换 Core/zju-connect 后重试。"
+        }
+        if lower.contains("error parsing the config file") {
+            return "运行配置无法解析（内核版本与配置不兼容）。请更新 zju-connect 内核后重试。"
+        }
+        if looksLikeCLIUsageOrFatal(lower) {
+            return "协议引擎启动失败（参数/配置不兼容）。请更新内核后重试。"
+        }
         return line
     }
 
@@ -1106,6 +1286,9 @@ final class ConnectEngine: ObservableObject {
     private func handleTermination(status: Int32) {
         let wasAuthenticated = didAuthenticate
         captchaPollTask?.cancel()
+        proxyProbeTask?.cancel()
+        proxyProbeTask = nil
+        passwordAuthSucceeded = false
         cleanupProcess()
         wipeRuntimeConfig()
         restoreSystemProxyIfManaged()
@@ -1144,18 +1327,26 @@ final class ConnectEngine: ObservableObject {
         }
 
         let message = lastError ?? "进程退出 (code \(status))"
-        phase = .failed(message)
         holdSMSSheet = false
         pendingSMSCode = nil
         smsRetryRelaunch = false
         connectedSince = nil
-        appendLog("[OpenZweb] \(message)")
-
-        // Only auto-reconnect after a real authenticated session drops (not captcha/login failures).
-        if let settings = lastSettings, settings.autoReconnect, wasAuthenticated {
-            scheduleReconnect()
-        }
         didAuthenticate = false
+        reconnectTask?.cancel()
+        reconnectTask = nil
+
+        // Login/startup failures must never auto-reconnect. Only a previously
+        // healthy connected session may reconnect (and only if user enabled it).
+        if wasAuthenticated, let settings = lastSettings, settings.autoReconnect, status != 0 {
+            phase = .failed(message)
+            appendLog("[OpenZweb] \(message)")
+            appendLog("[OpenZweb] 连接意外中断，将按设置尝试自动重连")
+            scheduleReconnect()
+            return
+        }
+
+        // Hard failure: dialog + stop. No silent retries.
+        presentFailure(message, log: true)
     }
 
     private func scheduleReconnect() {

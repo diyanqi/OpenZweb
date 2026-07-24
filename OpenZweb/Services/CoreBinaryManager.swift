@@ -75,11 +75,12 @@ enum CoreBinaryManager {
 
     private static func candidateURLs() -> [URL] {
         let fm = FileManager.default
+        // Prefer bundled / project Core over a possibly stale Application Support copy.
+        // App Support is still listed last among first-class sources so installCopy can refresh it.
         var list: [URL] = [
             Bundle.main.resourceURL?.appendingPathComponent("Core/\(binaryName)"),
             Bundle.main.bundleURL
-                .appendingPathComponent("Contents/Resources/Core/\(binaryName)"),
-            supportDirectory.appendingPathComponent(binaryName)
+                .appendingPathComponent("Contents/Resources/Core/\(binaryName)")
         ].compactMap { $0 }
 
         list.append(contentsOf: projectCoreCandidates())
@@ -87,6 +88,7 @@ enum CoreBinaryManager {
             URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
                 .appendingPathComponent("Core/\(binaryName)")
         )
+        list.append(supportDirectory.appendingPathComponent(binaryName))
         list.append(URL(fileURLWithPath: "/opt/homebrew/bin/\(binaryName)"))
         list.append(URL(fileURLWithPath: "/usr/local/bin/\(binaryName)"))
         list.append(fm.homeDirectoryForCurrentUser.appendingPathComponent("go/bin/\(binaryName)"))
@@ -174,16 +176,19 @@ enum CoreBinaryManager {
         let target = supportDirectory.appendingPathComponent(binaryName)
         let fm = FileManager.default
         if fm.fileExists(atPath: target.path) {
-            // Keep existing if same inode/size and already native when source is not.
-            if let srcAttrs = try? fm.attributesOfItem(atPath: source.path),
-               let dstAttrs = try? fm.attributesOfItem(atPath: target.path),
-               let srcSize = srcAttrs[.size] as? NSNumber,
-               let dstSize = dstAttrs[.size] as? NSNumber,
-               srcSize == dstSize {
-                let existing = BinaryInfo(url: target, arch: machOArch(of: target))
-                if existing.isNative || !BinaryInfo(url: source, arch: machOArch(of: source)).isNative {
-                    return target
-                }
+            let srcAttrs = try? fm.attributesOfItem(atPath: source.path)
+            let dstAttrs = try? fm.attributesOfItem(atPath: target.path)
+            let srcSize = (srcAttrs?[.size] as? NSNumber)?.intValue
+            let dstSize = (dstAttrs?[.size] as? NSNumber)?.intValue
+            let srcDate = srcAttrs?[.modificationDate] as? Date
+            let dstDate = dstAttrs?[.modificationDate] as? Date
+            let sameSize = (srcSize != nil && srcSize == dstSize)
+            let sourceNewer = (srcDate != nil && dstDate != nil && srcDate! > dstDate!)
+            let existing = BinaryInfo(url: target, arch: machOArch(of: target))
+            let sourceInfo = BinaryInfo(url: source, arch: machOArch(of: source))
+            // Keep only when identical size, not older, and arch is acceptable.
+            if sameSize, !sourceNewer, existing.isNative || !sourceInfo.isNative {
+                return target
             }
             try? fm.removeItem(at: target)
         }

@@ -56,6 +56,21 @@ struct ContentView: View {
                 .environmentObject(engine)
         }
         .alert(
+            L10n.t("phase.failed"),
+            isPresented: Binding(
+                get: { engine.failureDialogMessage != nil },
+                set: { present in
+                    if !present { engine.dismissFailureDialog() }
+                }
+            )
+        ) {
+            Button(L10n.t("common.ok"), role: .cancel) {
+                engine.dismissFailureDialog()
+            }
+        } message: {
+            Text(engine.failureDialogMessage ?? "")
+        }
+        .alert(
             engine.proxyConflict?.title ?? L10n.t("proxy.conflict_title"),
             isPresented: Binding(
                 get: { engine.proxyConflict != nil },
