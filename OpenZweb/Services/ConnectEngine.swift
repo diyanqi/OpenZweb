@@ -19,6 +19,7 @@ final class ConnectEngine: ObservableObject {
     @Published private(set) var lastError: String?
     /// One-shot failure dialog (no auto-retry). Cleared when user dismisses.
     @Published var failureDialogMessage: String?
+    @Published private(set) var isApplyingRouting = false
     @Published private(set) var coreBinaryPath: String?
     /// Warning or install hint for the protocol engine (arch mismatch / missing).
     @Published private(set) var coreBinaryNote: String?
@@ -108,6 +109,115 @@ final class ConnectEngine: ObservableObject {
     func dismissFailureDialog() {
         failureDialogMessage = nil
     }
+
+    /// Apply allow/deny lists while keeping the session when possible.
+    /// System PAC / bypass update is true hot-apply (no re-auth).
+    /// Engine `custom_proxy_domain` still requires a soft restart only if user wants RVPN force — we avoid it.
+    func hotApplyRoutingRules(_ settings: AppSettings) {
+        lastSettings = settings
+        settings.save()
+        isApplyingRouting = true
+        let deny = settings.proxyDenyDomains
+        let allow = Self.expandedProxyDomains(settings.proxyAllowDomains)
+        appendLog("[OpenZweb] 热更新分流：白名单 \(allow.isEmpty ? "（空）→ 全局系统代理" : allow.joined(separator: ", "))")
+        appendLog("[OpenZweb] 热更新分流：黑名单 \(deny.isEmpty ? "（空）" : deny.joined(separator: ", "))")
+
+        let socksBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.socksBind) : settings.socksBind
+        let httpBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.httpBind) : settings.httpBind
+        let socks = SystemProxyManager.Endpoint.parse(socksBind).map { "127.0.0.1:\($0.port)" } ?? socksBind
+        let http = SystemProxyManager.Endpoint.parse(httpBind).map { "127.0.0.1:\($0.port)" } ?? httpBind
+        let manageProxy = settings.manageSystemProxy
+        let phaseNow = phase
+
+        Task.detached(priority: .userInitiated) { [weak self] in
+            defer {
+                Task { @MainActor in self?.isApplyingRouting = false }
+            }
+            guard manageProxy, phaseNow == .connected else {
+                await MainActor.run {
+                    self?.appendLog("[OpenZweb] 规则已保存；\(phaseNow == .connected ? "未托管系统代理" : "当前未连接")，下次连接时生效")
+                }
+                return
+            }
+            do {
+                let pac = try SystemProxyManager.hotApplyRouting(
+                    httpBind: http,
+                    socksBind: socks,
+                    allowDomains: allow,
+                    denyDomains: deny
+                )
+                await MainActor.run {
+                    if let pac {
+                        self?.appendLog("[OpenZweb] 分流已热更新：PAC 模式（仅白名单走代理）→ \(pac.path)")
+                    } else {
+                        self?.appendLog("[OpenZweb] 分流已热更新：全局系统代理 + 黑名单绕过")
+                    }
+                    self?.appendLog("[OpenZweb] 无需断开 VPN / 重新认证")
+                }
+            } catch {
+                await MainActor.run {
+                    self?.appendLog("[OpenZweb] 分流热更新失败：\(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    /// Soft-restart engine with same password / client data to pick up custom_proxy_domain.
+    private func softRestartForRouting(settings: AppSettings) {
+        reconnectTask?.cancel()
+        captchaPollTask?.cancel()
+        proxyProbeTask?.cancel()
+        proxyProbeTask = nil
+
+        // Keep system proxy while restarting so browsers don't flap.
+        if let process, process.isRunning {
+            process.terminate()
+        }
+        cleanupProcess()
+        // Do NOT wipe system proxy; do NOT clear lastPassword.
+        didAuthenticate = false
+        captchaSatisfied = false
+        holdSMSSheet = false
+        captchaServerURL = nil
+        captchaImage = nil
+        lastCaptchaServerURLString = nil
+        phase = .authenticating
+        activeMode = settings.connectionMode
+
+        guard let info = CoreBinaryManager.resolveBinary() else {
+            isApplyingRouting = false
+            presentFailure(CoreError.binaryNotFound.localizedDescription)
+            return
+        }
+        do {
+            try startProcess(binary: info.url, settings: settings, password: lastPassword)
+            startCaptchaPolling()
+            startProxyReadyProbe()
+            // Clear applying flag when connected or failed (processLogLine / termination).
+            Task { [weak self] in
+                for _ in 0..<80 {
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    guard let engine = self else { return }
+                    switch engine.phase {
+                    case .connected:
+                        engine.isApplyingRouting = false
+                        engine.appendLog("[OpenZweb] 分流规则已通过软重启生效")
+                        return
+                    case .failed, .idle:
+                        engine.isApplyingRouting = false
+                        return
+                    default:
+                        break
+                    }
+                }
+                await MainActor.run { self?.isApplyingRouting = false }
+            }
+        } catch {
+            isApplyingRouting = false
+            presentFailure(error.localizedDescription)
+        }
+    }
+
 
     /// Present a failure dialog once and cancel any pending reconnect.
     private func presentFailure(_ message: String, log: Bool = true) {
@@ -416,13 +526,18 @@ final class ConnectEngine: ObservableObject {
         // to be mis-detected as "connected". Prefer config-only / default routing.
         var args = [
             "-config", configURL.path,
-            "-graph-code-file", CoreBinaryManager.captchaImageURL.path
+            "-graph-code-file", CoreBinaryManager.captchaImageURL.path,
+            "-client-data-file", CoreBinaryManager.clientDataURL.path
         ]
         // Belt-and-suspenders: also pass CLI string form (comma-separated).
+        // zju-connect flag type is string: "a.com,b.com"
         if let settings = lastSettings {
             let domains = Self.expandedProxyDomains(settings.proxyAllowDomains)
             if !domains.isEmpty {
                 args += ["-custom-proxy-domain", domains.joined(separator: ",")]
+                appendLog("[OpenZweb] CLI -custom-proxy-domain " + domains.joined(separator: ","))
+            } else {
+                appendLog("[OpenZweb] CLI 未附加 -custom-proxy-domain（白名单为空）")
             }
         }
         process.arguments = args
@@ -476,11 +591,11 @@ final class ConnectEngine: ObservableObject {
         let logFile = CoreBinaryManager.supportDirectory.appendingPathComponent("engine.log")
         try? "".write(to: logFile, atomically: true, encoding: .utf8)
 
-        var extraFlags = ""
+        var extraFlags = " -client-data-file " + shellQuote(CoreBinaryManager.clientDataURL.path)
         if let settings = lastSettings {
             let domains = Self.expandedProxyDomains(settings.proxyAllowDomains)
             if !domains.isEmpty {
-                extraFlags = " -custom-proxy-domain \(shellQuote(domains.joined(separator: ",")))"
+                extraFlags += " -custom-proxy-domain " + shellQuote(domains.joined(separator: ","))
             }
         }
         let cmd = """
@@ -857,8 +972,11 @@ final class ConnectEngine: ObservableObject {
     private func applySystemProxyIfNeededAsync() {
         guard let settings = lastSettings else { return }
         let extraBypass = settings.proxyDenyDomains
-        let socks = SystemProxyManager.Endpoint.parse(settings.socksBind).map { "127.0.0.1:\($0.port)" } ?? settings.socksBind
-        let http = SystemProxyManager.Endpoint.parse(settings.httpBind).map { "127.0.0.1:\($0.port)" } ?? settings.httpBind
+        let allowDomains = Self.expandedProxyDomains(settings.proxyAllowDomains)
+        let socksBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.socksBind) : settings.socksBind
+        let httpBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.httpBind) : settings.httpBind
+        let socks = SystemProxyManager.Endpoint.parse(socksBind).map { "127.0.0.1:\($0.port)" } ?? socksBind
+        let http = SystemProxyManager.Endpoint.parse(httpBind).map { "127.0.0.1:\($0.port)" } ?? httpBind
         let manageProxy = settings.manageSystemProxy
         let manageDNS = settings.manageSystemDNS
         // NEVER push campus 10.x into macOS system DNS in proxy mode — UDP to 10.x
@@ -877,6 +995,13 @@ final class ConnectEngine: ObservableObject {
 
         if manageProxy || manageDNS {
             appendLog("[OpenZweb] " + L10n.t("log.proxy_applying"))
+            if manageProxy {
+                if allowDomains.isEmpty {
+                    appendLog("[OpenZweb] 系统代理：全局 HTTP/HTTPS/SOCKS（白名单为空）")
+                } else {
+                    appendLog("[OpenZweb] 系统代理：PAC 分流（仅白名单域名走代理）：\(allowDomains.joined(separator: ", "))")
+                }
+            }
             if manageDNS {
                 if settings.tunMode {
                     appendLog("[OpenZweb] DNS 策略（TUN）：系统 DNS → 127.0.0.1，校内解析走隧道")
@@ -894,13 +1019,18 @@ final class ConnectEngine: ObservableObject {
                     dnsServers: dnsForSystem,
                     manageProxy: manageProxy,
                     manageDNS: manageDNS,
-                    extraBypassDomains: extraBypass
+                    extraBypassDomains: extraBypass,
+                    allowDomains: allowDomains
                 )
                 guard let engine = self else { return }
                 await MainActor.run {
                     engine.systemProxyManaged = manageProxy
                     if manageProxy {
-                        engine.appendLog("[OpenZweb] " + L10n.format("log.proxy_set", http, socks))
+                        if allowDomains.isEmpty {
+                            engine.appendLog("[OpenZweb] " + L10n.format("log.proxy_set", http, socks))
+                        } else {
+                            engine.appendLog("[OpenZweb] 已启用 PAC 分流 → HTTP \(http) · SOCKS \(socks)")
+                        }
                     }
                     if manageDNS, let dnsForSystem {
                         engine.appendLog("[OpenZweb] 已设置系统 DNS → \(dnsForSystem.joined(separator: ", "))")
@@ -1081,19 +1211,22 @@ final class ConnectEngine: ObservableObject {
         var out: [String] = []
         var seen = Set<String>()
         func add(_ d: String) {
-            let t = d.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !t.isEmpty, !seen.contains(t) else { return }
+            var t = d.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if t.hasPrefix("*.") { t = String(t.dropFirst(2)) }
+            if t.hasPrefix(".") { t = String(t.dropFirst()) }
+            if t.hasPrefix("http://") { t = String(t.dropFirst(7)) }
+            if t.hasPrefix("https://") { t = String(t.dropFirst(8)) }
+            if let slash = t.firstIndex(of: "/") { t = String(t[..<slash]) }
+            guard !t.isEmpty, t.contains("."), !seen.contains(t) else { return }
             seen.insert(t)
             out.append(t)
         }
         for item in raw {
+            add(item)
             var d = item.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if d.hasPrefix("*.") { d = String(d.dropFirst(2)) }
-            if d.hasPrefix(".") { d = String(d.dropFirst()) }
-            guard !d.isEmpty else { continue }
-            add(d)
             // Common host prefix — many sites only hit www.*
-            if !d.hasPrefix("www.") {
+            if !d.isEmpty, !d.hasPrefix("www.") {
                 add("www." + d)
             }
         }

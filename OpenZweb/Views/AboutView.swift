@@ -16,14 +16,7 @@ struct AboutView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 18) {
-                Image("BrandMark")
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 96, height: 96)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    .shadow(color: .black.opacity(0.18), radius: 12, y: 5)
-                    .padding(.top, 8)
+                BrandMarkTapView(size: 88, cornerRadius: 20)
 
                 Text("OpenZweb")
                     .font(.system(.title, design: .rounded).weight(.bold))

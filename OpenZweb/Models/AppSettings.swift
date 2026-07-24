@@ -99,6 +99,8 @@ struct AppSettings: Codable, Equatable {
     var checkUpdatesOnLaunch: Bool = true
     /// Default: check skip future secondary SMS (prefix $).
     var preferSkipSecondaryAuth: Bool = true
+    /// UI language; system follows macOS locale.
+    var appLanguage: AppLanguage = .system
 
     // Legacy migration
     var dnsServer: String? = nil

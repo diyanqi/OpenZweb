@@ -9,6 +9,7 @@ final class SettingsStore: ObservableObject {
 
     init() {
         settings = AppSettings.load()
+        L10n.apply(language: settings.appLanguage)
     }
 
     func persist() {

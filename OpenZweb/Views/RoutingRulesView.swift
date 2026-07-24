@@ -3,6 +3,7 @@ import SwiftUI
 /// Dedicated panel for proxy allow/deny lists (not buried in Settings).
 struct RoutingRulesView: View {
     @EnvironmentObject private var store: SettingsStore
+    @EnvironmentObject private var engine: ConnectEngine
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -56,6 +57,23 @@ struct RoutingRulesView: View {
                 }
 
                 Section {
+                    Button {
+                        store.persist()
+                        engine.hotApplyRoutingRules(store.settings)
+                    } label: {
+                        if engine.isApplyingRouting {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text(L10n.t("routing.apply_now"))
+                            }
+                        } else {
+                            Text(L10n.t("routing.apply_now"))
+                        }
+                    }
+                    .disabled(engine.isApplyingRouting)
+                    Text(L10n.t("routing.apply_now_hint"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Text(L10n.t("routing.note"))
                         .font(.caption)
                         .foregroundStyle(.secondary)

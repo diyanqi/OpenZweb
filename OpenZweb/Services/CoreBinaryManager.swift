@@ -219,6 +219,10 @@ enum CoreBinaryManager {
         supportDirectory.appendingPathComponent("captcha.png")
     }
 
+    static var clientDataURL: URL {
+        supportDirectory.appendingPathComponent("atrust-client-data.json")
+    }
+
     static var stdinFIFOURL: URL {
         supportDirectory.appendingPathComponent("engine.stdin")
     }

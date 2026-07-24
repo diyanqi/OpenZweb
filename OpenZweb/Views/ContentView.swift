@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject private var engine: ConnectEngine
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var updater: UpdateChecker
+    @EnvironmentObject private var eggs: EasterEggController
     @StateObject private var monitor = NetworkMonitor()
     @State private var password: String = ""
     @State private var showSettings = false
@@ -46,10 +47,19 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showAbout) {
             AboutView()
+                .environmentObject(eggs)
+        }
+        .sheet(isPresented: Binding(
+            get: { eggs.showPlayer },
+            set: { if !$0 { eggs.showPlayer = false } }
+        )) {
+            EasterEggPlayerSheet()
+                .environmentObject(eggs)
         }
         .sheet(isPresented: $showRoutingRules) {
             RoutingRulesView()
                 .environmentObject(store)
+                .environmentObject(engine)
         }
         .sheet(isPresented: smsPresented) {
             SMSOTPSheet()
@@ -145,12 +155,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
-                    Image("BrandMark")
-                            .resizable()
-                            .interpolation(.high)
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 44, height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    BrandMarkTapView(size: 44, cornerRadius: 12)
                             .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
                     
                     VStack(alignment: .leading, spacing: 2) {

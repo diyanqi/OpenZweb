@@ -64,8 +64,10 @@ enum SystemProxyManager {
                         return Self.systemProxyConflictMessage
                     }
                 }
-                if isAutoProxyEnabled(service: service) {
-                    return Self.systemProxyConflictMessage
+                if let pacURL = autoProxyURL(service: service), !pacURL.isEmpty {
+                    if isAutoProxyEnabled(service: service), !isOpenZwebPACURL(pacURL) {
+                        return Self.systemProxyConflictMessage
+                    }
                 }
             }
         }
@@ -83,24 +85,57 @@ enum SystemProxyManager {
         return L10n.t("proxy.check_pass_empty")
     }
 
+
+    /// OpenZweb PAC lives under Application Support/OpenZweb/openzweb.pac
+    private static func isOpenZwebPACURL(_ url: String) -> Bool {
+        let u = url.lowercased()
+        if u.isEmpty { return false }
+        if u.contains("openzweb.pac") { return true }
+        if u.contains("/openzweb/") && u.hasSuffix(".pac") { return true }
+        return false
+    }
+
     /// True when system proxy is on but only points at OpenZweb local binds.
     static func isLikelyOpenZwebResidualProxy(httpBind: String? = nil, socksBind: String? = nil) -> Bool {
         let ours = ownedEndpoints(httpBind: httpBind, socksBind: socksBind)
-        guard !ours.isEmpty else { return false }
         // Prefer scutil snapshot
         if let text = scutilProxyText() {
+            if scutilFlagEnabled(text, key: "ProxyAutoDiscoveryEnable") {
+                return false
+            }
+            let pacOn = scutilFlagEnabled(text, key: "ProxyAutoConfigEnable")
+            if pacOn {
+                let pac = (scutilString(text, key: "ProxyAutoConfigURLString") ?? "").lowercased()
+                if isOpenZwebPACURL(pac) {
+                    // PAC-only residual is ours when no foreign manual proxy.
+                    if foreignProxyInScutil(text, owned: ours) { return false }
+                    return true
+                }
+                return false
+            }
             let anyOn =
                 scutilFlagEnabled(text, key: "HTTPEnable")
                 || scutilFlagEnabled(text, key: "HTTPSEnable")
                 || scutilFlagEnabled(text, key: "SOCKSEnable")
             if !anyOn { return false }
-            if scutilFlagEnabled(text, key: "ProxyAutoConfigEnable")
-                || scutilFlagEnabled(text, key: "ProxyAutoDiscoveryEnable") {
+            if foreignProxyInScutil(text, owned: ours) { return false }
+            return !ours.isEmpty
+        }
+        // Fallback networksetup
+        guard let services = try? listNetworkServices(readOnly: true) else { return false }
+        var sawOurs = false
+        for service in services {
+            if isAutoProxyEnabled(service: service) {
+                // treat unknown PAC as not residual
                 return false
             }
-            return !foreignProxyInScutil(text, owned: ours)
+            guard let state = try? readState(service: service, readOnly: true) else { continue }
+            if foreignProxyEnabled(state: state, owned: ours) { return false }
+            if state.webEnabled || state.secureEnabled || state.socksEnabled {
+                sawOurs = true
+            }
         }
-        return UserDefaults.standard.bool(forKey: appliedKey)
+        return sawOurs && !ours.isEmpty
     }
 
     private static var systemProxyConflictMessage: Conflict {
@@ -210,10 +245,16 @@ enum SystemProxyManager {
 
     private static func detectViaScutil(owned: Set<String>) -> Conflict? {
         guard let text = scutilProxyText() else { return nil }
-        // PAC / WPAD from third parties always conflict.
-        if scutilFlagEnabled(text, key: "ProxyAutoConfigEnable")
-            || scutilFlagEnabled(text, key: "ProxyAutoDiscoveryEnable") {
+        // PAC / WPAD from third parties conflict; OpenZweb's own PAC is residual (safe to replace).
+        if scutilFlagEnabled(text, key: "ProxyAutoDiscoveryEnable") {
             return Self.systemProxyConflictMessage
+        }
+        if scutilFlagEnabled(text, key: "ProxyAutoConfigEnable") {
+            let pac = (scutilString(text, key: "ProxyAutoConfigURLString") ?? "").lowercased()
+            if !isOpenZwebPACURL(pac) {
+                return Self.systemProxyConflictMessage
+            }
+            // Our PAC alone is OK — still check for foreign manual proxies below.
         }
         let anyManual =
             scutilFlagEnabled(text, key: "HTTPEnable")
@@ -241,16 +282,38 @@ enum SystemProxyManager {
         return false
     }
 
+    private static func autoProxyURL(service: String) -> String? {
+        guard let text = try? run(["-getautoproxyurl", service], readOnly: true) else { return nil }
+        for line in text.split(separator: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            let lower = t.lowercased()
+            if lower.hasPrefix("url:") {
+                return t.split(separator: ":", maxSplits: 1).last.map { String($0).trimmingCharacters(in: .whitespaces) }
+            }
+        }
+        // Some macOS versions print bare URL on its own line
+        for line in text.split(separator: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.lowercased().hasPrefix("http") || t.lowercased().hasPrefix("file:") {
+                return t
+            }
+        }
+        return nil
+    }
+
     private static func isAutoProxyEnabled(service: String) -> Bool {
         guard let text = try? run(["-getautoproxyurl", service], readOnly: true) else { return false }
-        for line in text.split(separator: "\n") {
-            let parts = line.split(separator: ":", maxSplits: 1).map {
-                $0.trimmingCharacters(in: .whitespaces)
+        let lower = text.lowercased()
+        if lower.contains("enabled: yes") || lower.contains("enabled: true") { return true }
+        // Older format: Enabled: Yes
+        if lower.contains("enabled") && lower.contains("yes") { return true }
+        // If URL present and not empty, treat as potentially on (networksetup is inconsistent).
+        if let url = autoProxyURL(service: service), !url.isEmpty, !url.lowercased().contains("(null)") {
+            // Only trust explicit Enabled line when present
+            if lower.contains("enabled") {
+                return lower.contains("yes") || lower.contains("true")
             }
-            guard parts.count == 2 else { continue }
-            if parts[0].lowercased() == "enabled" {
-                return parts[1].lowercased().hasPrefix("y")
-            }
+            return true
         }
         return false
     }
@@ -264,15 +327,94 @@ enum SystemProxyManager {
         var services: [String: [String]]
     }
 
+    /// Hot-update proxy bypass domains without touching HTTP/SOCKS endpoints.
+    static func updateBypassDomains(_ extra: [String] = []) throws {
+        let services = try listNetworkServices(readOnly: true)
+        var bypassParts = ["127.0.0.1", "localhost", "*.local", "vpn.zju.edu.cn", "zjuam.zju.edu.cn"]
+        for d in extra where !d.isEmpty {
+            let x = d.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !x.isEmpty, !bypassParts.contains(x) { bypassParts.append(x) }
+        }
+        let bypass = bypassParts.joined(separator: " ")
+        var scriptLines: [String] = ["set -e"]
+        for service in services {
+            let s = shellQuote(service)
+            scriptLines.append("/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)")
+        }
+        try runBatchScript(scriptLines.joined(separator: "\n"))
+    }
+
+    /// Rewrite PAC + system proxy routing while connected (no engine restart).
+    /// - Non-empty allow list → PAC (only listed hosts use local proxy)
+    /// - Empty allow list → global manual HTTP/HTTPS/SOCKS
+    @discardableResult
+    static func hotApplyRouting(
+        httpBind: String,
+        socksBind: String,
+        allowDomains: [String],
+        denyDomains: [String]
+    ) throws -> URL? {
+        guard let http = Endpoint.parse(httpBind), let socks = Endpoint.parse(socksBind) else {
+            throw ProxyError.invalidBind
+        }
+        let services = try listNetworkServices(readOnly: true)
+        let httpProxy = "\(http.host):\(http.port)"
+        let socksProxy = "\(socks.host):\(socks.port)"
+        let pacFile = try ProxyHelper.savePAC(
+            httpProxy: httpProxy,
+            socksProxy: socksProxy,
+            allowList: allowDomains,
+            denyList: denyDomains
+        )
+        var scriptLines: [String] = ["set -e"]
+        var bypassParts = ["127.0.0.1", "localhost", "*.local", "vpn.zju.edu.cn", "zjuam.zju.edu.cn"]
+        for d in denyDomains where !d.isEmpty {
+            if !bypassParts.contains(d) { bypassParts.append(d) }
+        }
+        let bypass = bypassParts.joined(separator: " ")
+        let usePAC = !allowDomains.isEmpty
+        let pacURL = pacFile.absoluteString
+        for service in services {
+            let s = shellQuote(service)
+            if usePAC {
+                scriptLines += [
+                    "/usr/sbin/networksetup -setwebproxystate \(s) off",
+                    "/usr/sbin/networksetup -setsecurewebproxystate \(s) off",
+                    "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) off",
+                    "/usr/sbin/networksetup -setautoproxyurl \(s) \(shellQuote(pacURL))",
+                    "/usr/sbin/networksetup -setautoproxystate \(s) on",
+                    "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
+                ]
+            } else {
+                scriptLines += [
+                    "/usr/sbin/networksetup -setautoproxystate \(s) off",
+                    "/usr/sbin/networksetup -setwebproxy \(s) \(shellQuote(http.host)) \(http.port)",
+                    "/usr/sbin/networksetup -setwebproxystate \(s) on",
+                    "/usr/sbin/networksetup -setsecurewebproxy \(s) \(shellQuote(http.host)) \(http.port)",
+                    "/usr/sbin/networksetup -setsecurewebproxystate \(s) on",
+                    "/usr/sbin/networksetup -setsocksfirewallproxy \(s) \(shellQuote(socks.host)) \(socks.port)",
+                    "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) on",
+                    "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
+                ]
+            }
+        }
+        try runBatchScript(scriptLines.joined(separator: "\n"))
+        UserDefaults.standard.set(true, forKey: appliedKey)
+        UserDefaults.standard.set(usePAC, forKey: "openzweb.systemProxy.pacMode")
+        return usePAC ? pacFile : nil
+    }
+
     /// Apply proxy + optional DNS in **one** background-friendly batch (single admin prompt max).
     /// Must NOT be called on the main thread for long; prefer `Task.detached`.
+    /// When `allowDomains` is non-empty, installs a PAC so only those hosts use OpenZweb.
     static func applyProxyAndDNS(
         httpBind: String,
         socksBind: String,
         dnsServers: [String]?,
         manageProxy: Bool,
         manageDNS: Bool,
-        extraBypassDomains: [String] = []
+        extraBypassDomains: [String] = [],
+        allowDomains: [String] = []
     ) throws {
         guard manageProxy || manageDNS else { return }
         guard let http = Endpoint.parse(httpBind), let socks = Endpoint.parse(socksBind) else {
@@ -314,18 +456,41 @@ enum SystemProxyManager {
             if !bypassParts.contains(d) { bypassParts.append(d) }
         }
         let bypass = bypassParts.joined(separator: " ")
+        let usePAC = manageProxy && !allowDomains.isEmpty
+        var pacURLString: String?
+        if usePAC {
+            let pacFile = try ProxyHelper.savePAC(
+                httpProxy: "\(http.host):\(http.port)",
+                socksProxy: "\(socks.host):\(socks.port)",
+                allowList: allowDomains,
+                denyList: extraBypassDomains
+            )
+            pacURLString = pacFile.absoluteString
+        }
         for service in services {
             let s = shellQuote(service)
             if manageProxy {
-                scriptLines += [
-                    "/usr/sbin/networksetup -setwebproxy \(s) \(shellQuote(http.host)) \(http.port)",
-                    "/usr/sbin/networksetup -setwebproxystate \(s) on",
-                    "/usr/sbin/networksetup -setsecurewebproxy \(s) \(shellQuote(http.host)) \(http.port)",
-                    "/usr/sbin/networksetup -setsecurewebproxystate \(s) on",
-                    "/usr/sbin/networksetup -setsocksfirewallproxy \(s) \(shellQuote(socks.host)) \(socks.port)",
-                    "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) on",
-                    "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
-                ]
+                if usePAC, let pacURLString {
+                    scriptLines += [
+                        "/usr/sbin/networksetup -setwebproxystate \(s) off",
+                        "/usr/sbin/networksetup -setsecurewebproxystate \(s) off",
+                        "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) off",
+                        "/usr/sbin/networksetup -setautoproxyurl \(s) \(shellQuote(pacURLString))",
+                        "/usr/sbin/networksetup -setautoproxystate \(s) on",
+                        "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
+                    ]
+                } else {
+                    scriptLines += [
+                        "/usr/sbin/networksetup -setautoproxystate \(s) off",
+                        "/usr/sbin/networksetup -setwebproxy \(s) \(shellQuote(http.host)) \(http.port)",
+                        "/usr/sbin/networksetup -setwebproxystate \(s) on",
+                        "/usr/sbin/networksetup -setsecurewebproxy \(s) \(shellQuote(http.host)) \(http.port)",
+                        "/usr/sbin/networksetup -setsecurewebproxystate \(s) on",
+                        "/usr/sbin/networksetup -setsocksfirewallproxy \(s) \(shellQuote(socks.host)) \(socks.port)",
+                        "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) on",
+                        "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
+                    ]
+                }
             }
             if manageDNS, let dnsServers, !dnsServers.isEmpty {
                 let dnsArgs = dnsServers.map(shellQuote).joined(separator: " ")
@@ -334,7 +499,10 @@ enum SystemProxyManager {
         }
 
         try runBatchScript(scriptLines.joined(separator: "\n"))
-        if manageProxy { UserDefaults.standard.set(true, forKey: appliedKey) }
+        if manageProxy {
+            UserDefaults.standard.set(true, forKey: appliedKey)
+            UserDefaults.standard.set(usePAC, forKey: "openzweb.systemProxy.pacMode")
+        }
         if manageDNS { UserDefaults.standard.set(true, forKey: dnsAppliedKey) }
     }
 
@@ -350,6 +518,7 @@ enum SystemProxyManager {
                let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
                 for state in snapshot.services {
                     let s = shellQuote(state.service)
+                    scriptLines.append("/usr/sbin/networksetup -setautoproxystate \(s) off")
                     if state.webEnabled {
                         scriptLines += [
                             "/usr/sbin/networksetup -setwebproxy \(s) \(shellQuote(state.webHost)) \(state.webPort)",
@@ -383,6 +552,7 @@ enum SystemProxyManager {
                 for service in services {
                     let s = shellQuote(service)
                     scriptLines += [
+                        "/usr/sbin/networksetup -setautoproxystate \(s) off",
                         "/usr/sbin/networksetup -setwebproxystate \(s) off",
                         "/usr/sbin/networksetup -setsecurewebproxystate \(s) off",
                         "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) off"
@@ -413,6 +583,7 @@ enum SystemProxyManager {
         try? runBatchScript(scriptLines.joined(separator: "\n"))
         UserDefaults.standard.set(false, forKey: appliedKey)
         UserDefaults.standard.set(false, forKey: dnsAppliedKey)
+        UserDefaults.standard.set(false, forKey: "openzweb.systemProxy.pacMode")
         UserDefaults.standard.removeObject(forKey: snapshotKey)
         UserDefaults.standard.removeObject(forKey: dnsSnapshotKey)
     }

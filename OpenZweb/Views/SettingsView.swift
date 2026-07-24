@@ -52,9 +52,15 @@ struct SettingsView: View {
                     Text(L10n.t("settings.language_hint"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    LabeledContent(L10n.t("common.zh_hans"), value: "zh-Hans")
-                    LabeledContent(L10n.t("common.zh_hant"), value: "zh-Hant")
-                    LabeledContent(L10n.t("common.english"), value: "en")
+                    Picker(L10n.t("settings.language"), selection: $store.settings.appLanguage) {
+                        ForEach(AppLanguage.allCases) { lang in
+                            Text(lang.displayName).tag(lang)
+                        }
+                    }
+                    .onChange(of: store.settings.appLanguage) { _, lang in
+                        L10n.apply(language: lang)
+                        store.persist()
+                    }
                 }
 
                 Section(L10n.t("settings.ui")) {

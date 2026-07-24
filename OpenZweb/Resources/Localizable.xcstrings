@@ -3205,19 +3205,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "UI language follows macOS System Settings → Language & Region. Supported: Simplified Chinese, Traditional Chinese, English."
+            "value": "Default follows macOS. Change applies immediately to most UI text."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "界面语言跟随 macOS「系统设置 → 语言与地区」。已支持：简体中文、繁体中文、英语。"
+            "value": "默认跟随系统。切换后大部分界面文案会立即更新。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "介面語言跟隨 macOS「系統設定 → 語言與地區」。已支援：簡體中文、繁體中文、英語。"
+            "value": "預設跟隨系統。切換後大部分介面文案會立即更新。"
           }
         }
       }
@@ -3297,19 +3297,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Domains forced through campus VPN (even if not in school resource list). One per line."
+            "value": "Allow list: only these domains use OpenZweb (PAC). Leave empty to send all traffic through the system proxy. One domain per line; *.example.com is OK."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "强制走校园 VPN 的域名（即使不在学校资源列表）。每行一个。"
+            "value": "白名单：仅这些域名走 OpenZweb（PAC 分流）。留空则全部流量走系统代理。每行一个域名；支持 *.example.com。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "強制走校園 VPN 的網域（即使不在學校資源列表）。每行一個。"
+            "value": "白名單：僅這些網域走 OpenZweb（PAC 分流）。留空則全部流量走系統代理。每行一個網域；支援 *.example.com。"
           }
         }
       }
@@ -3320,19 +3320,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Example: science.org, nature.com or one per line"
+            "value": "e.g.\n*.zju.edu.cn\nwww.cc98.org\nscholar.edu.cn\ngithub.com"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "示例：science.org, nature.com 或每行一个"
+            "value": "例如：\n*.zju.edu.cn\nwww.cc98.org\nscholar.edu.cn\ngithub.com"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "範例：science.org, nature.com 或每行一個"
+            "value": "例如：\n*.zju.edu.cn\nwww.cc98.org\nscholar.edu.cn\ngithub.com"
           }
         }
       }
@@ -3366,19 +3366,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Domains that bypass the local VPN proxy in system proxy"
+            "value": "Deny list: always DIRECT (system proxy bypass / PAC). Useful for local LAN and tools that must not use the VPN proxy."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在系统代理中直连（不经本机 VPN 代理）的域名"
+            "value": "黑名单：始终直连（系统代理绕过 / PAC）。适合本机、局域网或不想走 VPN 的工具。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "在系統代理中直連（不經本機 VPN 代理）的網域"
+            "value": "黑名單：始終直連（系統代理繞過 / PAC）。適合本機、區域網或不想走 VPN 的工具。"
           }
         }
       }
@@ -3412,19 +3412,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Allow-list is written into zju-connect as custom_proxy_domain (force RVPN). Reconnect after editing. Deny-list is applied as system proxy bypass. Wildcards like *.google.com are normalized to google.com (+ www.)."
+            "value": "Tip: with an allow list, only listed hosts hit OpenZweb — ideal for coexisting with other proxies. Empty allow list = global proxy."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "白名单写入 zju-connect 的 custom_proxy_domain（强制走 VPN）。修改后需重新连接才生效。黑名单写入系统代理绕过列表。*.google.com 会规范为 google.com（并自动加 www.）。"
+            "value": "提示：填写白名单后，只有名单内域名进入 OpenZweb，便于与其他代理共存。白名单为空 = 全局系统代理。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "白名單寫入 zju-connect 的 custom_proxy_domain（強制走 VPN）。修改後需重新連線才生效。黑名單寫入系統代理略過清單。*.google.com 會規範為 google.com（並自動加 www.）。"
+            "value": "提示：填寫白名單後，只有名單內網域進入 OpenZweb，便於與其他代理共存。白名單為空 = 全域系統代理。"
           }
         }
       }
@@ -5081,6 +5081,259 @@
           "stringUnit": {
             "state": "translated",
             "value": "關閉主視窗後程式塢圖示會隱藏，應用繼續在選單列托盤執行。請從托盤選單選擇結束。"
+          }
+        }
+      }
+    },
+    "lang.system": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随系统"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟隨系統"
+          }
+        }
+      }
+    },
+    "lang.zh_hans": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "简体中文"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "简体中文"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "簡體中文"
+          }
+        }
+      }
+    },
+    "lang.zh_hant": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "繁體中文"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "繁体中文"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "繁體中文"
+          }
+        }
+      }
+    },
+    "lang.en": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "English"
+          }
+        }
+      }
+    },
+    "settings.language": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Language"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "界面语言"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "介面語言"
+          }
+        }
+      }
+    },
+    "routing.apply_now": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apply rules now"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即应用规则"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即套用規則"
+          }
+        }
+      }
+    },
+    "routing.apply_now_hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While connected, applies immediately via PAC / system proxy — no disconnect or re-login."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接时可立即生效（更新 PAC / 系统代理），无需断开或重新登录。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已連線時可立即生效（更新 PAC / 系統代理），無需中斷或重新登入。"
+          }
+        }
+      }
+    },
+    "routing.applied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Routing rules applied"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分流规则已应用"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分流規則已套用"
+          }
+        }
+      }
+    },
+    "egg.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You found it"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你发现了彩蛋"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你發現了彩蛋"
+          }
+        }
+      }
+    },
+    "egg.unmute": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sound"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "声音"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "聲音"
+          }
+        }
+      }
+    },
+    "egg.close": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉"
           }
         }
       }

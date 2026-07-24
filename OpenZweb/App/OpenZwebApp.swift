@@ -6,6 +6,7 @@ struct OpenZwebApp: App {
     @StateObject private var engine = ConnectEngine()
     @StateObject private var store = SettingsStore()
     @StateObject private var updater = UpdateChecker()
+    @StateObject private var eggs = EasterEggController()
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
@@ -14,6 +15,7 @@ struct OpenZwebApp: App {
                 .environmentObject(engine)
                 .environmentObject(store)
                 .environmentObject(updater)
+                .environmentObject(eggs)
                 .onAppear {
                     appDelegate.engine = engine
                     appDelegate.store = store
@@ -62,6 +64,7 @@ struct OpenZwebApp: App {
                 .environmentObject(engine)
                 .environmentObject(store)
                 .environmentObject(updater)
+                .environmentObject(eggs)
         }
     }
 

@@ -36,13 +36,7 @@ struct LoginPanel: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            Image("BrandMark")
-                .resizable()
-                .interpolation(.high)
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 72, height: 72)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+            BrandMarkTapView(size: 64, cornerRadius: 16)
             Text(L10n.t("login.title"))
                 .font(.system(.largeTitle, design: .rounded).weight(.bold))
             Text(L10n.t("login.subtitle"))

@@ -6,12 +6,19 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$ROOT/Core"
 mkdir -p "$DEST"
 
-ARCH="$(uname -m)"
-case "$ARCH" in
-  arm64) GOARCH=arm64 ;;
-  x86_64) GOARCH=amd64 ;;
-  *) echo "Unsupported arch: $ARCH"; exit 1 ;;
-esac
+# Allow CI to force arch: FORCE_GOARCH=arm64|amd64
+if [[ -n "${FORCE_GOARCH:-}" ]]; then
+  GOARCH="$FORCE_GOARCH"
+else
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    arm64) GOARCH=arm64 ;;
+    x86_64) GOARCH=amd64 ;;
+    *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+  esac
+fi
+# Optional output name: DEST_NAME=zju-connect-arm64
+DEST_NAME="${DEST_NAME:-zju-connect}"
 
 API="${ZJU_CONNECT_RELEASE_API:-https://api.github.com/repos/Mythologyli/zju-connect/releases/latest}"
 TAG_FALLBACK="${ZJU_CONNECT_TAG:-v1.2.1}"
@@ -110,16 +117,18 @@ download_and_extract() {
     return 1
   fi
 
-  cp "$bin" "$DEST/zju-connect"
-  chmod +x "$DEST/zju-connect"
+  cp "$bin" "$DEST/$DEST_NAME"
+  chmod +x "$DEST/$DEST_NAME"
   # Also install into Application Support for the app runtime
   local app_support="$HOME/Library/Application Support/OpenZweb"
   mkdir -p "$app_support"
-  cp "$DEST/zju-connect" "$app_support/zju-connect"
-  chmod +x "$app_support/zju-connect"
+  if [[ "$DEST_NAME" == "zju-connect" ]]; then
+    cp "$DEST/$DEST_NAME" "$app_support/zju-connect"
+    chmod +x "$app_support/zju-connect"
+    echo "✓ Also:      $app_support/zju-connect"
+  fi
 
-  echo "✓ Installed: $DEST/zju-connect"
-  echo "✓ Also:      $app_support/zju-connect"
+  echo "✓ Installed: $DEST/$DEST_NAME"
   return 0
 }
 
@@ -201,13 +210,16 @@ try_go_install() {
       :
     fi
     if [[ -x "$DEST/zju-connect" ]]; then
-      echo "✓ Built: $DEST/zju-connect"
+      if [[ "$DEST_NAME" != "zju-connect" ]]; then
+        mv -f "$DEST/zju-connect" "$DEST/$DEST_NAME"
+      fi
+      echo "✓ Built: $DEST/$DEST_NAME"
       return 0
     fi
     if [[ -x "$gobin/zju-connect" ]]; then
-      cp "$gobin/zju-connect" "$DEST/zju-connect"
-      chmod +x "$DEST/zju-connect"
-      echo "✓ Installed from GOPATH: $DEST/zju-connect"
+      cp "$gobin/zju-connect" "$DEST/$DEST_NAME"
+      chmod +x "$DEST/$DEST_NAME"
+      echo "✓ Installed from GOPATH: $DEST/$DEST_NAME"
       return 0
     fi
   done
@@ -219,10 +231,10 @@ try_go_install() {
 }
 
 main() {
-  if [[ -x "$DEST/zju-connect" && "${FORCE_REDOWNLOAD:-}" != "1" ]]; then
-    echo "✓ Already present: $DEST/zju-connect"
-    file "$DEST/zju-connect" || true
-    "$DEST/zju-connect" -h 2>&1 | head -n 6 || true
+  if [[ -x "$DEST/$DEST_NAME" && "${FORCE_REDOWNLOAD:-}" != "1" ]]; then
+    echo "✓ Already present: $DEST/$DEST_NAME"
+    file "$DEST/$DEST_NAME" || true
+    "$DEST/$DEST_NAME" -h 2>&1 | head -n 6 || true
     exit 0
   fi
 
@@ -243,10 +255,18 @@ MSG
   fi
 
   if try_github_release || try_tag_urls || try_go_install; then
-    if [[ -x "$DEST/zju-connect" ]]; then
+    if [[ -x "$DEST/$DEST_NAME" ]]; then
       echo "—— version ——"
-      "$DEST/zju-connect" -h 2>&1 | head -n 10 || true
-      file "$DEST/zju-connect" || true
+      "$DEST/$DEST_NAME" -h 2>&1 | head -n 10 || true
+      file "$DEST/$DEST_NAME" || true
+      exit 0
+    fi
+    # go install always writes zju-connect; rename if needed
+    if [[ -x "$DEST/zju-connect" && "$DEST_NAME" != "zju-connect" ]]; then
+      mv -f "$DEST/zju-connect" "$DEST/$DEST_NAME"
+      echo "—— version ——"
+      "$DEST/$DEST_NAME" -h 2>&1 | head -n 10 || true
+      file "$DEST/$DEST_NAME" || true
       exit 0
     fi
   fi
