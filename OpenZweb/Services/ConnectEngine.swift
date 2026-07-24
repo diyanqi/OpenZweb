@@ -199,21 +199,15 @@ final class ConnectEngine: ObservableObject {
         // Keep system proxy while restarting so browsers don't flap.
         elevatedWatchTask?.cancel()
         elevatedWatchTask = nil
+
+        var killCmd = ""
         if elevated {
-            var killCmd = ""
             if let pid = elevatedPID, pid > 1 {
-                killCmd += "kill \(pid) 2>/dev/null || true; "
+                killCmd += "kill \(pid) 2>/dev/null || true; sleep 0.1; kill -9 \(pid) 2>/dev/null || true; "
             }
+            killCmd += "if [ -f \(shellQuote(ElevatedSession.enginePIDURL.path)) ]; then ep=$(cat \(shellQuote(ElevatedSession.enginePIDURL.path))); kill $ep 2>/dev/null || true; kill -9 $ep 2>/dev/null || true; rm -f \(shellQuote(ElevatedSession.enginePIDURL.path)); fi; "
             if let config = runtimeConfigURL {
-                killCmd += "pkill -f \(shellQuote(config.path)) || true"
-            }
-            if !killCmd.isEmpty {
-                let script = "do shell script \(appleScriptString(killCmd)) with administrator privileges"
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                p.arguments = ["-e", script]
-                try? p.run()
-                p.waitUntilExit()
+                killCmd += "pkill -f \(shellQuote(config.path)) 2>/dev/null || true; "
             }
             elevatedPID = nil
         }
@@ -242,32 +236,46 @@ final class ConnectEngine: ObservableObject {
             presentFailure(CoreError.binaryNotFound.localizedDescription)
             return
         }
-        do {
-            try startProcess(binary: info.url, settings: settings, password: lastPassword)
-            startCaptchaPolling()
-            startProxyReadyProbe()
-            // Clear applying flag when connected or failed (processLogLine / termination).
-            Task { [weak self] in
+
+        let password = lastPassword
+        let binary = info.url
+        let kill = killCmd
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if !kill.isEmpty {
+                // Off main actor — agent queue, no password if agent already up.
+                await Task.detached {
+                    _ = try? ElevatedSession.runRootScript(kill, timeout: 30)
+                }.value
+            }
+            guard self.phase == .authenticating || self.phase == .preparing else {
+                self.isApplyingRouting = false
+                return
+            }
+            do {
+                try await self.startProcessAsync(binary: binary, settings: settings, password: password)
+                self.startCaptchaPolling()
+                self.startProxyReadyProbe()
                 for _ in 0..<80 {
                     try? await Task.sleep(nanoseconds: 250_000_000)
-                    guard let engine = self else { return }
-                    switch engine.phase {
+                    switch self.phase {
                     case .connected:
-                        engine.isApplyingRouting = false
-                        engine.appendLog("[OpenZweb] 分流规则已通过软重启生效")
+                        self.isApplyingRouting = false
+                        self.appendLog("[OpenZweb] 分流规则已通过软重启生效")
                         return
                     case .failed, .idle:
-                        engine.isApplyingRouting = false
+                        self.isApplyingRouting = false
                         return
                     default:
                         break
                     }
                 }
-                await MainActor.run { self?.isApplyingRouting = false }
+                self.isApplyingRouting = false
+            } catch {
+                self.isApplyingRouting = false
+                guard self.phase == .authenticating || self.phase == .preparing || self.phase == .waitingCaptcha else { return }
+                self.presentFailure(error.localizedDescription)
             }
-        } catch {
-            isApplyingRouting = false
-            presentFailure(error.localizedDescription)
         }
     }
 
@@ -405,13 +413,21 @@ final class ConnectEngine: ObservableObject {
         appendLog("[OpenZweb] " + L10n.t("log.start_engine"))
         appendLog("[OpenZweb] \(settings.serverAddress):\(settings.serverPort) · \(settings.protocolKind.displayName) · \(settings.connectionMode.displayName)")
 
-        do {
-            try startProcess(binary: binary, settings: settings, password: password)
-            startCaptchaPolling()
-        } catch {
-            phase = .failed(error.localizedDescription)
-            lastError = error.localizedDescription
-            appendLog("[OpenZweb] 启动失败: \(error.localizedDescription)")
+        // TUN may show one admin dialog — never block the main actor on osascript.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Bail if user cancelled / started another connect.
+            guard self.phase == .preparing || self.phase == .authenticating else { return }
+            do {
+                try await self.startProcessAsync(binary: binary, settings: settings, password: password)
+                self.startCaptchaPolling()
+            } catch {
+                // Ignore stale errors if user already disconnected.
+                guard self.phase == .preparing || self.phase == .authenticating || self.phase == .waitingCaptcha else { return }
+                self.phase = .failed(error.localizedDescription)
+                self.lastError = error.localizedDescription
+                self.appendLog("[OpenZweb] 启动失败: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -453,22 +469,18 @@ final class ConnectEngine: ObservableObject {
         elevatedWatchTask?.cancel()
         elevatedWatchTask = nil
         if elevated {
-            // Best-effort kill elevated process by PID first, then config path match.
+            // Kill via elevated agent — no second password prompt when agent is alive.
             var killCmd = ""
             if let pid = elevatedPID, pid > 1 {
-                killCmd += "kill \(pid) 2>/dev/null || true; "
+                killCmd += "kill \(pid) 2>/dev/null || true; sleep 0.1; kill -9 \(pid) 2>/dev/null || true; "
             }
+            killCmd += "if [ -f \(shellQuote(ElevatedSession.enginePIDURL.path)) ]; then ep=$(cat \(shellQuote(ElevatedSession.enginePIDURL.path))); kill $ep 2>/dev/null || true; kill -9 $ep 2>/dev/null || true; rm -f \(shellQuote(ElevatedSession.enginePIDURL.path)); fi; "
             if let config = runtimeConfigURL {
-                killCmd += "pkill -f \(shellQuote(config.path)) || true"
-            } else if killCmd.isEmpty {
-                killCmd = "pkill -f zju-connect || true"
+                killCmd += "pkill -f \(shellQuote(config.path)) 2>/dev/null || true; "
             }
-            let script = "do shell script \(appleScriptString(killCmd)) with administrator privileges"
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            p.arguments = ["-e", script]
-            try? p.run()
-            p.waitUntilExit()
+            Task.detached {
+                _ = try? ElevatedSession.runRootScript(killCmd, timeout: 30)
+            }
             elevatedPID = nil
         }
 
@@ -568,13 +580,48 @@ final class ConnectEngine: ObservableObject {
     // MARK: - Process
 
     private func startProcess(binary: URL, settings: AppSettings, password: String) throws {
+        // Kept for soft-restart / SMS relaunch paths that already run on MainActor.
+        try startProcessSync(binary: binary, settings: settings, password: password)
+    }
+
+    private func startProcessAsync(binary: URL, settings: AppSettings, password: String) async throws {
+        try? FileManager.default.removeItem(at: CoreBinaryManager.captchaImageURL)
+        let configURL = try writeRuntimeConfig(settings: settings, password: password)
+        runtimeConfigURL = configURL
+
+        if settings.tunMode {
+            appendLog("[OpenZweb] TUN 模式：准备管理员助手（首次连接需输入一次系统密码，之后本会话内不再弹出）…")
+            // ensureAgent may show password UI — do it off the cooperative main actor work.
+            try await Task.detached(priority: .userInitiated) {
+                try ElevatedSession.ensureAgent()
+            }.value
+            // Allow SMS-retry relaunch (phase stays waitingSMS) and soft-restart (authenticating).
+            switch phase {
+            case .preparing, .authenticating, .waitingSMS, .waitingCaptcha:
+                break
+            default:
+                return
+            }
+            try await startElevated(binary: binary, configURL: configURL)
+        } else {
+            try startNormal(binary: binary, configURL: configURL)
+        }
+        if phase == .preparing {
+            phase = .authenticating
+        }
+    }
+
+    private func startProcessSync(binary: URL, settings: AppSettings, password: String) throws {
         try? FileManager.default.removeItem(at: CoreBinaryManager.captchaImageURL)
 
         let configURL = try writeRuntimeConfig(settings: settings, password: password)
         runtimeConfigURL = configURL
 
         if settings.tunMode {
-            try startElevated(binary: binary, configURL: configURL)
+            // TUN must use startProcessAsync (password dialog / agent queue off MainActor).
+            throw NSError(domain: "OpenZweb", code: 4, userInfo: [
+                NSLocalizedDescriptionKey: "内部错误：TUN 启动请使用异步路径"
+            ])
         } else {
             try startNormal(binary: binary, configURL: configURL)
         }
@@ -630,31 +677,44 @@ final class ConnectEngine: ObservableObject {
         appendLog("[OpenZweb] 已清除子进程代理环境变量，避免 Fake-IP (198.18.x) 干扰认证")
     }
 
-    /// TUN mode needs root. Launch via admin shell with FIFO for captcha stdin.
-    private func startElevated(binary: URL, configURL: URL) throws {
+    /// TUN mode needs root. Launch via persistent elevated agent (one password for the session).
+    private func startElevated(binary: URL, configURL: URL) async throws {
         elevated = true
-        appendLog("[OpenZweb] TUN 模式需要管理员权限，将弹出系统授权…")
+        appendLog("[OpenZweb] 通过管理员助手启动 TUN 引擎…")
 
         let fifo = CoreBinaryManager.stdinFIFOURL
-        try? FileManager.default.removeItem(at: fifo)
-        let mkfifo = Process()
-        mkfifo.executableURL = URL(fileURLWithPath: "/usr/bin/mkfifo")
-        mkfifo.arguments = [fifo.path]
-        try mkfifo.run()
-        mkfifo.waitUntilExit()
+        try prepareStdinFIFO(fifo)
 
-        // Open FIFO for writing in background so writer doesn't block forever.
-        // Reader side is opened by the elevated shell.
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            let handle = FileHandle(forWritingAtPath: fifo.path)
-            guard let engine = self else { return }
-            Task { @MainActor in
-                engine.fifoWriteHandle = handle
+        // Open FIFO O_RDWR so we never block waiting for the engine reader.
+        let fd = open(fifo.path, O_RDWR | O_CLOEXEC)
+        if fd >= 0 {
+            fifoWriteHandle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        } else {
+            // Fallback: background open (may race; O_RDWR preferred).
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let handle = FileHandle(forWritingAtPath: fifo.path)
+                guard let engine = self else { return }
+                Task { @MainActor in
+                    if engine.fifoWriteHandle == nil {
+                        engine.fifoWriteHandle = handle
+                    }
+                }
             }
         }
 
         let logFile = CoreBinaryManager.supportDirectory.appendingPathComponent("engine.log")
         try? "".write(to: logFile, atomically: true, encoding: .utf8)
+        // Root engine must be able to write captcha + logs into user support dir.
+        try? FileManager.default.setAttributes([.posixPermissions: 0o777], ofItemAtPath: CoreBinaryManager.supportDirectory.path)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: logFile.path)
+        // Keep config readable by root while still user-owned.
+        try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: configURL.path)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: CoreBinaryManager.captchaImageURL.path)
+        // client-data may not exist yet
+        let clientData = CoreBinaryManager.clientDataURL.path
+        if FileManager.default.fileExists(atPath: clientData) {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: clientData)
+        }
 
         var extraFlags = " -client-data-file " + shellQuote(CoreBinaryManager.clientDataURL.path)
         if let settings = lastSettings {
@@ -662,77 +722,128 @@ final class ConnectEngine: ObservableObject {
             lastEngineForceDomains = domains
             if !domains.isEmpty {
                 extraFlags += " -custom-proxy-domain " + shellQuote(domains.joined(separator: ","))
-            }
-            let ips = settings.proxyAllowDomains.filter { AppSettings.isIPAddress($0) }
-            if !ips.isEmpty {
-                appendLog("[OpenZweb] 已忽略 IP 白名单项（引擎不支持，会导致 TUN 启动失败）：\(ips.joined(separator: ", "))")
+                appendLog("[OpenZweb] CLI -custom-proxy-domain " + domains.joined(separator: ","))
             }
         }
-        // Inject no-op `open` + BROWSER so elevated root zju-connect cannot launch Safari.
-        // (Non-TUN uses Process.environment; osascript admin shell does not inherit it.)
+
         let stubOpen = Self.stubOpenPath()
-        let stubDir = URL(fileURLWithPath: stubOpen).deletingLastPathComponent().path
+        let stubDir = (stubOpen as NSString).deletingLastPathComponent
+        let enginePidFile = ElevatedSession.enginePIDURL.path
+        let support = CoreBinaryManager.supportDirectory.path
+
         let cmd = """
-        export PATH=\(shellQuote(stubDir)):\"${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}\"
+        set -e
+        export PATH=\(shellQuote(stubDir)):"${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
         export BROWSER=\(shellQuote(stubOpen))
         unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY socks_proxy SOCKS_PROXY ftp_proxy FTP_PROXY
         export NO_PROXY='*'
         export no_proxy='*'
+        # Stop previous engine started by agent (no extra password).
+        if [ -f \(shellQuote(enginePidFile)) ]; then
+          old=$(cat \(shellQuote(enginePidFile)) 2>/dev/null || true)
+          if [ -n "${old:-}" ]; then
+            kill "$old" 2>/dev/null || true
+            sleep 0.15
+            kill -9 "$old" 2>/dev/null || true
+          fi
+          rm -f \(shellQuote(enginePidFile))
+        fi
+        # Ensure support paths writable by root + user for captcha image handoff.
+        chmod 777 \(shellQuote(support)) 2>/dev/null || true
+        chmod 666 \(shellQuote(fifo.path)) 2>/dev/null || true
+        : > \(shellQuote(logFile.path))
+        chmod 666 \(shellQuote(logFile.path)) 2>/dev/null || true
+        # Touch captcha file so root can rewrite it.
+        : > \(shellQuote(CoreBinaryManager.captchaImageURL.path))
+        chmod 666 \(shellQuote(CoreBinaryManager.captchaImageURL.path)) 2>/dev/null || true
         \(shellQuote(binary.path)) -config \(shellQuote(configURL.path)) -graph-code-file \(shellQuote(CoreBinaryManager.captchaImageURL.path))\(extraFlags) < \(shellQuote(fifo.path)) > \(shellQuote(logFile.path)) 2>&1 &
+        echo $! > \(shellQuote(enginePidFile))
         echo $!
+        sleep 0.25
+        if ! kill -0 "$(cat \(shellQuote(enginePidFile)) 2>/dev/null)" 2>/dev/null; then
+          echo "ENGINE_DIED_EARLY" >&2
+          tail -n 40 \(shellQuote(logFile.path)) >&2 || true
+          exit 1
+        fi
         """
-        let script = "do shell script \(appleScriptString(cmd)) with administrator privileges"
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-        let out = Pipe()
-        let err = Pipe()
-        process.standardOutput = out
-        process.standardError = err
-        try process.run()
-        process.waitUntilExit()
+        let outText: String
+        do {
+            // Never block MainActor on agent queue wait / possible ensureAgent.
+            outText = try await Task.detached(priority: .userInitiated) {
+                try ElevatedSession.runRootScript(cmd, timeout: 60)
+            }.value
+        } catch {
+            elevated = false
+            throw error
+        }
 
-        if process.terminationStatus != 0 {
-            let msg = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "授权失败"
-            throw NSError(domain: "OpenZweb", code: Int(process.terminationStatus), userInfo: [
-                NSLocalizedDescriptionKey: "TUN 授权失败：\(msg.trimmingCharacters(in: .whitespacesAndNewlines))"
+        let pidToken = outText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).last.map(String.init) ?? outText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let pidVal = Int32(pidToken), pidVal > 1 else {
+            elevated = false
+            let detail = outText.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw NSError(domain: "OpenZweb", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "TUN 引擎启动失败：未能解析 PID\(detail.isEmpty ? "" : " — \(detail.prefix(200))")"
+            ])
+        }
+        // Confirm still alive after agent returned (catches instant crash during captcha setup).
+        if !Self.isPIDAlive(pidVal) {
+            elevated = false
+            let logTail = (try? String(contentsOf: logFile, encoding: .utf8))?.split(separator: "\n").suffix(15).joined(separator: "\n") ?? ""
+            throw NSError(domain: "OpenZweb", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "TUN 引擎启动后立即退出\(logTail.isEmpty ? "" : "：\n\(logTail)")"
             ])
         }
 
-        let outText = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        // osascript may wrap the shell output; take the last integer token as PID.
-        let pidToken = outText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).last.map(String.init) ?? outText
-        if let pidVal = Int32(pidToken), pidVal > 1 {
-            elevatedPID = pidVal
-            startElevatedProcessWatch(pid: pidVal)
-            appendLog("[OpenZweb] 已以管理员权限启动引擎 (TUN) pid=\(pidVal)")
-        } else {
-            elevatedPID = nil
-            appendLog("[OpenZweb] 已以管理员权限启动引擎 (TUN)（未能解析 PID：\(outText.isEmpty ? "空" : outText)）")
-        }
+        elevatedPID = pidVal
+        startElevatedProcessWatch(pid: pidVal)
+        appendLog("[OpenZweb] 已以管理员权限启动引擎 (TUN) pid=\(pidVal)")
 
-        // Poll engine log file instead of process pipes
+        // Give the engine a moment to open stdin / write first logs before we treat death as failure.
         startLogFilePolling(logFile)
         self.process = nil
         self.stdinPipe = nil
+        if phase == .preparing {
+            phase = .authenticating
+        }
+    }
+
+    private func prepareStdinFIFO(_ fifo: URL) throws {
+        try? FileManager.default.removeItem(at: fifo)
+        let mkfifo = Process()
+        mkfifo.executableURL = URL(fileURLWithPath: "/usr/bin/mkfifo")
+        mkfifo.arguments = [fifo.path]
+        try mkfifo.run()
+        mkfifo.waitUntilExit()
+        guard mkfifo.terminationStatus == 0 else {
+            throw NSError(domain: "OpenZweb", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "无法创建 stdin FIFO"
+            ])
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: fifo.path)
     }
 
     /// Watch root-owned zju-connect; user Process handle is nil in TUN mode.
     private func startElevatedProcessWatch(pid: pid_t) {
         elevatedWatchTask?.cancel()
         elevatedWatchTask = Task { [weak self] in
+            // Grace period: avoid treating startup races as immediate failure / exit 0.
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 if !Self.isPIDAlive(pid) {
                     await MainActor.run {
                         guard let engine = self else { return }
-                        // Avoid double-handling if user already disconnected.
-                        if engine.elevated, engine.elevatedPID == pid {
-                            engine.elevatedPID = nil
-                            engine.handleTermination(status: 1)
+                        // Avoid double-handling if user already disconnected / replaced PID.
+                        guard engine.elevated, engine.elevatedPID == pid else { return }
+                        // Still waiting for admin / first paint — don't flash "exit 0".
+                        if engine.phase == .preparing || engine.phase == .disconnecting || engine.phase == .idle {
+                            return
                         }
+                        engine.elevatedPID = nil
+                        // Prefer non-zero so we don't show a misleading "clean exit" during auth.
+                        let code: Int32 = engine.didAuthenticate ? 1 : 1
+                        engine.handleTermination(status: code)
                     }
                     return
                 }
@@ -1222,11 +1333,15 @@ final class ConnectEngine: ObservableObject {
     /// Show aTrust captcha only in-app (never open system browser).
     /// If already waiting, only refresh the URL to avoid double-panel flicker.
     private func presentInAppCaptcha(url: URL, logOpen: Bool) {
-        guard !captchaSatisfied else {
+        guard phase != .connected, phase != .waitingSMS, !holdSMSSheet else {
             captchaServerURL = url
             return
         }
-        guard phase != .connected, phase != .waitingSMS, !holdSMSSheet else {
+        // New captcha page always wins over a stale "satisfied" flag from a previous attempt.
+        if captchaSatisfied, lastCaptchaServerURLString != url.absoluteString {
+            captchaSatisfied = false
+        }
+        if captchaSatisfied {
             captchaServerURL = url
             return
         }
@@ -1242,9 +1357,7 @@ final class ConnectEngine: ObservableObject {
             NSApp.activate(ignoringOtherApps: true)
         } else if lastCaptchaServerURLString != key {
             // Same panel, new URL — reload WebView only
-            if logOpen {
-                appendLog("[OpenZweb] 验证码页面已更新")
-            }
+            appendLog("[OpenZweb] 验证码页面已更新")
         }
         lastCaptchaServerURLString = key
     }
@@ -1489,6 +1602,18 @@ final class ConnectEngine: ObservableObject {
     private func restartProcessKeepingSMSSheet(settings: AppSettings, password: String) {
         reconnectTask?.cancel()
         captchaPollTask?.cancel()
+        elevatedWatchTask?.cancel()
+        elevatedWatchTask = nil
+
+        // Kill TUN engine via agent if needed (no password when agent alive).
+        var killCmd = ""
+        if elevated {
+            if let pid = elevatedPID, pid > 1 {
+                killCmd += "kill \(pid) 2>/dev/null || true; kill -9 \(pid) 2>/dev/null || true; "
+            }
+            killCmd += "if [ -f \(shellQuote(ElevatedSession.enginePIDURL.path)) ]; then ep=$(cat \(shellQuote(ElevatedSession.enginePIDURL.path))); kill $ep 2>/dev/null || true; kill -9 $ep 2>/dev/null || true; rm -f \(shellQuote(ElevatedSession.enginePIDURL.path)); fi; "
+            elevatedPID = nil
+        }
         if let process, process.isRunning {
             process.terminate()
         }
@@ -1512,16 +1637,29 @@ final class ConnectEngine: ObservableObject {
         }
         coreBinaryPath = info.url.path
         appendLog("[OpenZweb] 为短信重试重新启动协议引擎…")
-        do {
-            try startProcess(binary: info.url, settings: settings, password: password)
-            startCaptchaPolling()
-            phase = .waitingSMS
-        } catch {
-            lastError = error.localizedDescription
-            smsError = error.localizedDescription
-            smsShakeToken += 1
-            phase = .waitingSMS
-            appendLog("[OpenZweb] 短信重试启动失败: \(error.localizedDescription)")
+        let binary = info.url
+        let kill = killCmd
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if !kill.isEmpty {
+                await Task.detached {
+                    _ = try? ElevatedSession.runRootScript(kill, timeout: 30)
+                }.value
+            }
+            do {
+                try await self.startProcessAsync(binary: binary, settings: settings, password: password)
+                self.startCaptchaPolling()
+                // Keep SMS sheet open for re-entry after relaunch.
+                self.holdSMSSheet = true
+                self.phase = .waitingSMS
+            } catch {
+                self.lastError = error.localizedDescription
+                self.smsError = error.localizedDescription
+                self.smsShakeToken += 1
+                self.holdSMSSheet = true
+                self.phase = .waitingSMS
+                self.appendLog("[OpenZweb] 短信重试启动失败: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -1686,6 +1824,17 @@ final class ConnectEngine: ObservableObject {
                 smsError = lastError
             }
             appendLog("[OpenZweb] 短信验证未通过，请继续在当前页面输入验证码")
+            return
+        }
+
+        // Engine died while captcha UI was up — don't leave the UI forever "校验中".
+        if phase == .waitingCaptcha || captchaServerURL != nil {
+            captchaServerURL = nil
+            captchaImage = nil
+            captchaSatisfied = false
+            lastCaptchaServerURLString = nil
+            let message = lastError ?? "人机验证未完成，引擎已退出 (code \(status))。请重新连接。"
+            presentFailure(message, log: true)
             return
         }
 

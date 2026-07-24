@@ -679,20 +679,26 @@ enum SystemProxyManager {
     @discardableResult
     private static func runShell(_ script: String, elevate: Bool) throws -> String {
         if elevate {
-            // Write script to temp file to avoid huge AppleScript escaping issues.
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("openzweb-netsetup-\(UUID().uuidString).sh")
-            try script.write(to: url, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
-            defer { try? FileManager.default.removeItem(at: url) }
+            // Prefer persistent elevated agent (one password for TUN + networksetup).
+            // Falls back to one-shot osascript if agent cannot start.
+            do {
+                return try ElevatedSession.runRootScript(script, timeout: 120)
+            } catch {
+                // Write script to temp file to avoid huge AppleScript escaping issues.
+                let url = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("openzweb-netsetup-\(UUID().uuidString).sh")
+                try script.write(to: url, atomically: true, encoding: .utf8)
+                try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+                defer { try? FileManager.default.removeItem(at: url) }
 
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = [
-                "-e",
-                "do shell script \(appleScriptString("/bin/bash \(shellQuote(url.path))")) with administrator privileges"
-            ]
-            return try finish(process)
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = [
+                    "-e",
+                    "do shell script \(appleScriptString("/bin/bash \(shellQuote(url.path))")) with administrator privileges"
+                ]
+                return try finish(process)
+            }
         } else {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
@@ -710,15 +716,20 @@ enum SystemProxyManager {
             return try finish(process)
         } catch {
             if readOnly { throw error }
-            // Single elevated networksetup as fallback
+            // Prefer elevated agent (same password session as TUN); osascript only as last resort.
             let quoted = args.map(shellQuote).joined(separator: " ")
-            let process2 = Process()
-            process2.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process2.arguments = [
-                "-e",
-                "do shell script \(appleScriptString("/usr/sbin/networksetup \(quoted)")) with administrator privileges"
-            ]
-            return try finish(process2)
+            let script = "/usr/sbin/networksetup \(quoted)"
+            do {
+                return try ElevatedSession.runRootScript(script, timeout: 60)
+            } catch {
+                let process2 = Process()
+                process2.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process2.arguments = [
+                    "-e",
+                    "do shell script \(appleScriptString(script)) with administrator privileges"
+                ]
+                return try finish(process2)
+            }
         }
     }
 
