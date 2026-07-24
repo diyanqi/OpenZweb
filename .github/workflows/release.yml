@@ -133,20 +133,42 @@ jobs:
           TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
         run: |
           set -euo pipefail
-          for attempt in 1 2 3 4 5 6; do
+          # Normalize tag (accept v1.0.8 or 1.0.8)
+          if [[ "$TAG" != v* ]]; then
+            TAG="v${TAG}"
+          fi
+          ls -lah dist || true
+          if ! ls dist/*.dmg >/dev/null 2>&1; then
+            echo "No DMG artifacts in dist/" >&2
+            exit 1
+          fi
+          # Single universal DMG (arm64 + x86_64) — name ends with macos-universal.dmg
+          for attempt in 1 2 3 4 5 6 7 8; do
             echo "Release publish attempt $attempt for $TAG"
             if gh release view "$TAG" >/dev/null 2>&1; then
               if gh release upload "$TAG" dist/*.dmg --clobber; then
-                gh release edit "$TAG" --draft=false || true
+                gh release edit "$TAG" --draft=false --title "OpenZweb $TAG" || true
                 echo "Uploaded assets to existing release $TAG"
+                gh release view "$TAG" --json assets --jq '.assets[].name'
                 exit 0
               fi
             else
+              # Prefer --verify-tag when the tag is on the remote; fall back without it
+              # (workflow_dispatch / race right after git push --tags).
               if gh release create "$TAG" dist/*.dmg \
                   --title "OpenZweb $TAG" \
                   --generate-notes \
                   --verify-tag; then
-                echo "Created release $TAG"
+                echo "Created release $TAG (verified tag)"
+                gh release view "$TAG" --json assets --jq '.assets[].name'
+                exit 0
+              fi
+              if gh release create "$TAG" dist/*.dmg \
+                  --title "OpenZweb $TAG" \
+                  --generate-notes \
+                  --target "$GITHUB_SHA"; then
+                echo "Created release $TAG (target SHA fallback)"
+                gh release view "$TAG" --json assets --jq '.assets[].name'
                 exit 0
               fi
             fi

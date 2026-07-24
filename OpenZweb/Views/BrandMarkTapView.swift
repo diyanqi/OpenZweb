@@ -1,6 +1,7 @@
 import SwiftUI
 import AVKit
 import AVFoundation
+import AppKit
 
 /// Shared brand mark with 9-tap easter egg.
 struct BrandMarkTapView: View {
@@ -44,7 +45,9 @@ struct EasterEggPlayerSheet: View {
     @EnvironmentObject private var eggs: EasterEggController
     @State private var player: AVPlayer?
     @State private var soundOn = false
-    @State private var loopObserver: NSObjectProtocol?
+    @State private var statusText: String?
+    @State private var endObserver: NSObjectProtocol?
+    @State private var failObserver: NSObjectProtocol?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -58,6 +61,7 @@ struct EasterEggPlayerSheet: View {
                 }
                 .toggleStyle(.switch)
                 .frame(width: 120)
+                .disabled(player == nil)
                 Button(L10n.t("egg.close")) {
                     stop()
                     eggs.showPlayer = false
@@ -68,9 +72,16 @@ struct EasterEggPlayerSheet: View {
             ZStack {
                 Color.black.opacity(0.92)
                 if let player {
-                    VideoPlayer(player: player)
+                    // Use AppKit AVPlayerView — more stable than SwiftUI VideoPlayer on macOS sheets.
+                    EasterEggAVPlayerView(player: player)
+                } else if let statusText {
+                    Text(statusText)
+                        .foregroundStyle(.white.opacity(0.9))
+                        .multilineTextAlignment(.center)
+                        .padding()
                 } else {
                     ProgressView()
+                        .controlSize(.large)
                 }
             }
             .frame(minWidth: 520, minHeight: 320)
@@ -86,29 +97,70 @@ struct EasterEggPlayerSheet: View {
     }
 
     private func start() {
-        guard let url = Self.videoURL() else { return }
+        stop()
+        guard let url = Self.videoURL() else {
+            statusText = L10n.t("egg.missing")
+            return
+        }
+        statusText = nil
+
+        // Avoid App Nap / audio session issues when muted by default.
         let item = AVPlayerItem(url: url)
         let p = AVPlayer(playerItem: item)
         p.isMuted = true
         soundOn = false
         player = p
-        loopObserver = NotificationCenter.default.addObserver(
+
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
             queue: .main
+        ) { [weak p] _ in
+            p?.seek(to: .zero)
+            p?.play()
+        }
+        failObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
         ) { _ in
-            p.seek(to: .zero)
+            Task { @MainActor in
+                statusText = L10n.t("egg.play_error")
+            }
+        }
+
+        // Observe item status for immediate load failures.
+        Task { @MainActor in
+            for _ in 0..<40 {
+                switch item.status {
+                case .readyToPlay:
+                    p.play()
+                    return
+                case .failed:
+                    statusText = item.error?.localizedDescription ?? L10n.t("egg.play_error")
+                    return
+                case .unknown:
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                @unknown default:
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                }
+            }
+            // Still unknown — try play anyway.
             p.play()
         }
-        p.play()
     }
 
     private func stop() {
         player?.pause()
+        player?.replaceCurrentItem(with: nil)
         player = nil
-        if let loopObserver {
-            NotificationCenter.default.removeObserver(loopObserver)
-            self.loopObserver = nil
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+        if let failObserver {
+            NotificationCenter.default.removeObserver(failObserver)
+            self.failObserver = nil
         }
     }
 
@@ -116,6 +168,7 @@ struct EasterEggPlayerSheet: View {
         if let u = Bundle.main.url(forResource: "easteregg", withExtension: "mp4") {
             return u
         }
+        // Dev fallback when running from Xcode without copy phase.
         let dev = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // Views
             .deletingLastPathComponent() // OpenZweb
@@ -123,5 +176,30 @@ struct EasterEggPlayerSheet: View {
             .appendingPathComponent("easteregg.mp4")
         if FileManager.default.fileExists(atPath: dev.path) { return dev }
         return nil
+    }
+}
+
+/// AppKit-backed player to avoid SwiftUI VideoPlayer sheet crashes.
+private struct EasterEggAVPlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.player = player
+        view.controlsStyle = .inline
+        view.showsFullScreenToggleButton = false
+        view.allowsPictureInPicturePlayback = false
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player !== player {
+            nsView.player = player
+        }
+    }
+
+    static func dismantleNSView(_ nsView: AVPlayerView, coordinator: ()) {
+        nsView.player?.pause()
+        nsView.player = nil
     }
 }

@@ -7,6 +7,8 @@ struct OpenZwebApp: App {
     @StateObject private var store = SettingsStore()
     @StateObject private var updater = UpdateChecker()
     @StateObject private var eggs = EasterEggController()
+    // Singleton: ObservedObject (not StateObject) so we do not claim ownership of shared instance.
+    @ObservedObject private var language = LanguageController.shared
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
@@ -16,6 +18,8 @@ struct OpenZwebApp: App {
                 .environmentObject(store)
                 .environmentObject(updater)
                 .environmentObject(eggs)
+                .environmentObject(language)
+                .id(language.revision)
                 .onAppear {
                     appDelegate.engine = engine
                     appDelegate.store = store
@@ -55,6 +59,8 @@ struct OpenZwebApp: App {
                 .environmentObject(engine)
                 .environmentObject(store)
                 .environmentObject(updater)
+                .environmentObject(language)
+                .id(language.revision)
                 .frame(width: 560, height: 620)
         }
 

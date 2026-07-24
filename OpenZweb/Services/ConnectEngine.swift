@@ -66,6 +66,11 @@ final class ConnectEngine: ObservableObject {
     private var captchaSatisfied = false
     /// Last captcha server URL we already switched UI to (avoid re-entering waitingCaptcha).
     private var lastCaptchaServerURLString: String?
+    /// Root-launched zju-connect PID (TUN mode); Process handle is unavailable.
+    private var elevatedPID: pid_t?
+    private var elevatedWatchTask: Task<Void, Never>?
+    /// Last force-proxy domain list written into the running engine.
+    private var lastEngineForceDomains: [String] = []
 
     init() {
         refreshCoreBinary()
@@ -111,15 +116,21 @@ final class ConnectEngine: ObservableObject {
     }
 
     /// Apply allow/deny lists while keeping the session when possible.
-    /// System PAC / bypass update is true hot-apply (no re-auth).
-    /// Engine `custom_proxy_domain` still requires a soft restart only if user wants RVPN force — we avoid it.
+    /// - PAC / system bypass: true hot-apply (no re-auth) for proxy mode.
+    /// - Engine force-VPN domains (`custom_proxy_domain`): soft-restart when the domain set changed.
     func hotApplyRoutingRules(_ settings: AppSettings) {
         lastSettings = settings
         settings.save()
         isApplyingRouting = true
         let deny = settings.proxyDenyDomains
-        let allow = Self.expandedProxyDomains(settings.proxyAllowDomains)
-        appendLog("[OpenZweb] 热更新分流：白名单 \(allow.isEmpty ? "（空）→ 全局系统代理" : allow.joined(separator: ", "))")
+        let pacAllow = Self.pacRouteEntries(settings.proxyAllowDomains)
+        let engineDomains = Self.engineForceProxyDomains(settings.proxyAllowDomains)
+        let skippedIPs = settings.proxyAllowDomains.filter { AppSettings.isIPAddress($0) }
+        appendLog("[OpenZweb] 热更新分流：PAC/白名单 \(pacAllow.isEmpty ? "（空）→ 全局系统代理" : pacAllow.joined(separator: ", "))")
+        appendLog("[OpenZweb] 热更新分流：引擎强制 VPN 域名 \(engineDomains.isEmpty ? "（空）" : engineDomains.joined(separator: ", "))")
+        if !skippedIPs.isEmpty {
+            appendLog("[OpenZweb] 提示：IP \(skippedIPs.joined(separator: ", ")) 不能写入引擎 custom_proxy_domain（会直接导致启动失败）；已仅用于 PAC 匹配")
+        }
         appendLog("[OpenZweb] 热更新分流：黑名单 \(deny.isEmpty ? "（空）" : deny.joined(separator: ", "))")
 
         let socksBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.socksBind) : settings.socksBind
@@ -128,35 +139,57 @@ final class ConnectEngine: ObservableObject {
         let http = SystemProxyManager.Endpoint.parse(httpBind).map { "127.0.0.1:\($0.port)" } ?? httpBind
         let manageProxy = settings.manageSystemProxy
         let phaseNow = phase
+        let needEngineReload = phaseNow == .connected
+            && !settings.tunMode
+            && Set(engineDomains) != Set(lastEngineForceDomains)
+        let needEngineReloadTUN = phaseNow == .connected
+            && settings.tunMode
+            && Set(engineDomains) != Set(lastEngineForceDomains)
 
         Task.detached(priority: .userInitiated) { [weak self] in
-            defer {
-                Task { @MainActor in self?.isApplyingRouting = false }
-            }
-            guard manageProxy, phaseNow == .connected else {
+            // Proxy mode: update PAC first.
+            if manageProxy, phaseNow == .connected, let engine = self {
+                let tun = await MainActor.run { engine.activeMode == .tun }
+                if !tun {
+                    do {
+                        let pac = try SystemProxyManager.hotApplyRouting(
+                            httpBind: http,
+                            socksBind: socks,
+                            allowDomains: pacAllow,
+                            denyDomains: deny
+                        )
+                        await MainActor.run {
+                            if let pac {
+                                engine.appendLog("[OpenZweb] 分流已热更新：PAC 模式（域名/IP 白名单走本地代理）→ \(pac.path)")
+                            } else {
+                                engine.appendLog("[OpenZweb] 分流已热更新：全局系统代理 + 黑名单绕过")
+                            }
+                        }
+                    } catch {
+                        await MainActor.run {
+                            engine.appendLog("[OpenZweb] PAC 热更新失败：\(error.localizedDescription)")
+                        }
+                    }
+                }
+            } else if phaseNow != .connected {
                 await MainActor.run {
-                    self?.appendLog("[OpenZweb] 规则已保存；\(phaseNow == .connected ? "未托管系统代理" : "当前未连接")，下次连接时生效")
+                    self?.appendLog("[OpenZweb] 规则已保存；当前未连接，将在下次连接时生效")
+                    self?.isApplyingRouting = false
                 }
                 return
             }
-            do {
-                let pac = try SystemProxyManager.hotApplyRouting(
-                    httpBind: http,
-                    socksBind: socks,
-                    allowDomains: allow,
-                    denyDomains: deny
-                )
+
+            // Force-VPN domain list changed → soft restart so custom_proxy_domain takes effect.
+            let reload = needEngineReload || needEngineReloadTUN
+            if reload {
                 await MainActor.run {
-                    if let pac {
-                        self?.appendLog("[OpenZweb] 分流已热更新：PAC 模式（仅白名单走代理）→ \(pac.path)")
-                    } else {
-                        self?.appendLog("[OpenZweb] 分流已热更新：全局系统代理 + 黑名单绕过")
-                    }
-                    self?.appendLog("[OpenZweb] 无需断开 VPN / 重新认证")
+                    self?.appendLog("[OpenZweb] 引擎强制 VPN 域名已变更，正在软重启以写入 custom_proxy_domain（可能需重新短信验证）…")
+                    self?.softRestartForRouting(settings: settings)
                 }
-            } catch {
+            } else {
                 await MainActor.run {
-                    self?.appendLog("[OpenZweb] 分流热更新失败：\(error.localizedDescription)")
+                    self?.appendLog("[OpenZweb] 系统分流已更新；引擎强制域名未变，无需重新认证")
+                    self?.isApplyingRouting = false
                 }
             }
         }
@@ -170,6 +203,26 @@ final class ConnectEngine: ObservableObject {
         proxyProbeTask = nil
 
         // Keep system proxy while restarting so browsers don't flap.
+        elevatedWatchTask?.cancel()
+        elevatedWatchTask = nil
+        if elevated {
+            var killCmd = ""
+            if let pid = elevatedPID, pid > 1 {
+                killCmd += "kill \(pid) 2>/dev/null || true; "
+            }
+            if let config = runtimeConfigURL {
+                killCmd += "pkill -f \(shellQuote(config.path)) || true"
+            }
+            if !killCmd.isEmpty {
+                let script = "do shell script \(appleScriptString(killCmd)) with administrator privileges"
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                p.arguments = ["-e", script]
+                try? p.run()
+                p.waitUntilExit()
+            }
+            elevatedPID = nil
+        }
         if let process, process.isRunning {
             process.terminate()
         }
@@ -183,7 +236,13 @@ final class ConnectEngine: ObservableObject {
         lastCaptchaServerURLString = nil
         phase = .authenticating
         activeMode = settings.connectionMode
+        lastSettings = settings
 
+        guard !lastPassword.isEmpty else {
+            isApplyingRouting = false
+            presentFailure("无法热更新分流：会话密码不可用，请断开后重新连接")
+            return
+        }
         guard let info = CoreBinaryManager.resolveBinary() else {
             isApplyingRouting = false
             presentFailure(CoreError.binaryNotFound.localizedDescription)
@@ -397,18 +456,26 @@ final class ConnectEngine: ObservableObject {
         phase = .disconnecting
         appendLog("[OpenZweb] " + L10n.t("log.disconnecting"))
 
+        elevatedWatchTask?.cancel()
+        elevatedWatchTask = nil
         if elevated {
-            // Best-effort kill elevated process by matching config path
-            if let config = runtimeConfigURL {
-                let script = """
-                do shell script "pkill -f \(shellQuote(config.path)) || true" with administrator privileges
-                """
-                let p = Process()
-                p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                p.arguments = ["-e", script]
-                try? p.run()
-                p.waitUntilExit()
+            // Best-effort kill elevated process by PID first, then config path match.
+            var killCmd = ""
+            if let pid = elevatedPID, pid > 1 {
+                killCmd += "kill \(pid) 2>/dev/null || true; "
             }
+            if let config = runtimeConfigURL {
+                killCmd += "pkill -f \(shellQuote(config.path)) || true"
+            } else if killCmd.isEmpty {
+                killCmd = "pkill -f zju-connect || true"
+            }
+            let script = "do shell script \(appleScriptString(killCmd)) with administrator privileges"
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            p.arguments = ["-e", script]
+            try? p.run()
+            p.waitUntilExit()
+            elevatedPID = nil
         }
 
         process?.terminate()
@@ -532,12 +599,13 @@ final class ConnectEngine: ObservableObject {
         // Belt-and-suspenders: also pass CLI string form (comma-separated).
         // zju-connect flag type is string: "a.com,b.com"
         if let settings = lastSettings {
-            let domains = Self.expandedProxyDomains(settings.proxyAllowDomains)
+            let domains = Self.engineForceProxyDomains(settings.proxyAllowDomains)
+            lastEngineForceDomains = domains
             if !domains.isEmpty {
                 args += ["-custom-proxy-domain", domains.joined(separator: ",")]
                 appendLog("[OpenZweb] CLI -custom-proxy-domain " + domains.joined(separator: ","))
             } else {
-                appendLog("[OpenZweb] CLI 未附加 -custom-proxy-domain（白名单为空）")
+                appendLog("[OpenZweb] CLI 未附加 -custom-proxy-domain（无有效域名；IP 不会传给引擎）")
             }
         }
         process.arguments = args
@@ -593,9 +661,14 @@ final class ConnectEngine: ObservableObject {
 
         var extraFlags = " -client-data-file " + shellQuote(CoreBinaryManager.clientDataURL.path)
         if let settings = lastSettings {
-            let domains = Self.expandedProxyDomains(settings.proxyAllowDomains)
+            let domains = Self.engineForceProxyDomains(settings.proxyAllowDomains)
+            lastEngineForceDomains = domains
             if !domains.isEmpty {
                 extraFlags += " -custom-proxy-domain " + shellQuote(domains.joined(separator: ","))
+            }
+            let ips = settings.proxyAllowDomains.filter { AppSettings.isIPAddress($0) }
+            if !ips.isEmpty {
+                appendLog("[OpenZweb] 已忽略 IP 白名单项（引擎不支持，会导致 TUN 启动失败）：\(ips.joined(separator: ", "))")
             }
         }
         let cmd = """
@@ -621,12 +694,51 @@ final class ConnectEngine: ObservableObject {
             ])
         }
 
+        let outText = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // osascript may wrap the shell output; take the last integer token as PID.
+        let pidToken = outText.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).last.map(String.init) ?? outText
+        if let pidVal = Int32(pidToken), pidVal > 1 {
+            elevatedPID = pidVal
+            startElevatedProcessWatch(pid: pidVal)
+            appendLog("[OpenZweb] 已以管理员权限启动引擎 (TUN) pid=\(pidVal)")
+        } else {
+            elevatedPID = nil
+            appendLog("[OpenZweb] 已以管理员权限启动引擎 (TUN)（未能解析 PID：\(outText.isEmpty ? "空" : outText)）")
+        }
+
         // Poll engine log file instead of process pipes
         startLogFilePolling(logFile)
-        // Also store a sentinel process — we monitor via pgrep on disconnect
         self.process = nil
         self.stdinPipe = nil
-        appendLog("[OpenZweb] 已以管理员权限启动引擎 (TUN)")
+    }
+
+    /// Watch root-owned zju-connect; user Process handle is nil in TUN mode.
+    private func startElevatedProcessWatch(pid: pid_t) {
+        elevatedWatchTask?.cancel()
+        elevatedWatchTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if !Self.isPIDAlive(pid) {
+                    await MainActor.run {
+                        guard let engine = self else { return }
+                        // Avoid double-handling if user already disconnected.
+                        if engine.elevated, engine.elevatedPID == pid {
+                            engine.elevatedPID = nil
+                            engine.handleTermination(status: 1)
+                        }
+                    }
+                    return
+                }
+            }
+        }
+    }
+
+    private static func isPIDAlive(_ pid: pid_t) -> Bool {
+        if pid <= 1 { return false }
+        // kill(pid,0): 0 = alive & signalable; EPERM = alive but not owned; ESRCH = dead.
+        if kill(pid, 0) == 0 { return true }
+        return errno == EPERM
     }
 
     private func startLogFilePolling(_ logFile: URL) {
@@ -716,8 +828,10 @@ final class ConnectEngine: ObservableObject {
             "tcp_tunnel_mode = \(settings.tcpTunnelMode)"
         ]
         // Force-through-RVPN domains (zju-connect custom_proxy_domain).
-        // Expand bare domains with www. variant so common hostnames match.
-        let allowDomains = Self.expandedProxyDomains(settings.proxyAllowDomains)
+        // ONLY valid hostnames — IP literals make zju-connect exit before start.
+        let allowDomains = Self.engineForceProxyDomains(settings.proxyAllowDomains)
+        lastEngineForceDomains = allowDomains
+        let allowIPs = settings.proxyAllowDomains.filter { AppSettings.isIPAddress($0) }
         if allowDomains.isEmpty {
             appendLog("[OpenZweb] 代理白名单: （空）— 仅校内/服务器资源走 VPN，外网域名默认 DIRECT")
         } else {
@@ -725,6 +839,9 @@ final class ConnectEngine: ObservableObject {
             let arr = allowDomains.map { q($0) }.joined(separator: ", ")
             lines.append("custom_proxy_domain = [\(arr)]")
             appendLog("[OpenZweb] 代理白名单(custom_proxy_domain): \(allowDomains.joined(separator: ", "))")
+        }
+        if !allowIPs.isEmpty {
+            appendLog("[OpenZweb] PAC 可用 IP（不写引擎）: \(allowIPs.joined(separator: ", "))")
         }
         let denyDomains = settings.proxyDenyDomains
         if denyDomains.isEmpty {
@@ -972,7 +1089,7 @@ final class ConnectEngine: ObservableObject {
     private func applySystemProxyIfNeededAsync() {
         guard let settings = lastSettings else { return }
         let extraBypass = settings.proxyDenyDomains
-        let allowDomains = Self.expandedProxyDomains(settings.proxyAllowDomains)
+        let allowDomains = Self.pacRouteEntries(settings.proxyAllowDomains)
         let socksBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.socksBind) : settings.socksBind
         let httpBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.httpBind) : settings.httpBind
         let socks = SystemProxyManager.Endpoint.parse(socksBind).map { "127.0.0.1:\($0.port)" } ?? socksBind
@@ -1207,7 +1324,8 @@ final class ConnectEngine: ObservableObject {
 
     /// Normalize + expand allow-list domains for zju-connect matching.
     /// Bare "google.com" also yields "www.google.com"; wildcards stripped to suffix form.
-    private static func expandedProxyDomains(_ raw: [String]) -> [String] {
+    /// PAC allow/deny entries: domains (with www. expansion) + IP literals.
+    private static func pacRouteEntries(_ raw: [String]) -> [String] {
         var out: [String] = []
         var seen = Set<String>()
         func add(_ d: String) {
@@ -1217,7 +1335,9 @@ final class ConnectEngine: ObservableObject {
             if t.hasPrefix("http://") { t = String(t.dropFirst(7)) }
             if t.hasPrefix("https://") { t = String(t.dropFirst(8)) }
             if let slash = t.firstIndex(of: "/") { t = String(t[..<slash]) }
-            guard !t.isEmpty, t.contains("."), !seen.contains(t) else { return }
+            guard !t.isEmpty, !seen.contains(t) else { return }
+            // Domains need a dot; IPs are allowed as-is.
+            if !AppSettings.isIPAddress(t), !t.contains(".") { return }
             seen.insert(t)
             out.append(t)
         }
@@ -1225,12 +1345,22 @@ final class ConnectEngine: ObservableObject {
             add(item)
             var d = item.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if d.hasPrefix("*.") { d = String(d.dropFirst(2)) }
-            // Common host prefix — many sites only hit www.*
-            if !d.isEmpty, !d.hasPrefix("www.") {
+            // Expand www. only for real hostnames (never for IPs).
+            if !d.isEmpty, !AppSettings.isIPAddress(d), !d.hasPrefix("www.") {
                 add("www." + d)
             }
         }
         return out
+    }
+
+    /// Domains forced through RVPN inside zju-connect. IP literals are fatal to the engine.
+    private static func engineForceProxyDomains(_ raw: [String]) -> [String] {
+        pacRouteEntries(raw).filter { AppSettings.isEngineDomain($0) }
+    }
+
+    /// Backward-compatible alias used by older call sites.
+    private static func expandedProxyDomains(_ raw: [String]) -> [String] {
+        engineForceProxyDomains(raw)
     }
 
     /// Fatal CLI / config errors that must fail the session (not mere help lines).
@@ -1238,6 +1368,8 @@ final class ConnectEngine: ObservableObject {
         if lower.contains("flag provided but not defined") { return true }
         if lower.hasPrefix("usage of") || lower.contains("usage of ") { return true }
         if lower.contains("error parsing the config file") { return true }
+        // custom_proxy_domain IP / garbage → process exits before Start
+        if lower.contains("is not a valid domain") { return true }
         return false
     }
 
@@ -1277,6 +1409,8 @@ final class ConnectEngine: ObservableObject {
         if lower.contains("http") && lower.contains("listening") && lower.contains("proxy") { return true }
         if lower.contains("http server") && lower.contains("start") { return true }
         if lower.contains("proxy server") && (lower.contains("start") || lower.contains("listen")) { return true }
+        // zju-connect success after resource parse (proxy and TUN)
+        if lower.contains("vpn client started") { return true }
         // TUN ready (real device bring-up, not capability check)
         if lower.contains("tun device") || lower.contains("created tun") || lower.contains("interface up") {
             return true
@@ -1474,6 +1608,9 @@ final class ConnectEngine: ObservableObject {
         if lower.contains("error parsing the config file") {
             return "运行配置无法解析（内核版本与配置不兼容）。请更新 zju-connect 内核后重试。"
         }
+        if lower.contains("is not a valid domain") {
+            return "分流白名单含非法域名或 IP（引擎 custom_proxy_domain 只接受域名）。请删除 IP 后重试。"
+        }
         if looksLikeCLIUsageOrFatal(lower) {
             return "协议引擎启动失败（参数/配置不兼容）。请更新内核后重试。"
         }
@@ -1566,6 +1703,9 @@ final class ConnectEngine: ObservableObject {
     }
 
     private func cleanupProcess() {
+        elevatedWatchTask?.cancel()
+        elevatedWatchTask = nil
+        elevatedPID = nil
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
         stderrPipe?.fileHandleForReading.readabilityHandler = nil
         try? stdinPipe?.fileHandleForWriting.close()

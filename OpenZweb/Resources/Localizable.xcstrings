@@ -3297,19 +3297,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Allow list: only these domains use OpenZweb (PAC). Leave empty to send all traffic through the system proxy. One domain per line; *.example.com is OK."
+            "value": "Allow list: domains force RVPN (engine) and/or enter OpenZweb via PAC. Domains only for the engine — IP literals are for PAC matching only (IPs crash the engine if passed as domains). Leave empty = all traffic uses system proxy; campus resources still VPN."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "白名单：仅这些域名走 OpenZweb（PAC 分流）。留空则全部流量走系统代理。每行一个域名；支持 *.example.com。"
+            "value": "白名单：域名会写入引擎强制走 VPN，并用于 PAC 分流。引擎只接受域名；IP 仅用于 PAC 匹配（传给引擎会导致启动失败）。留空 = 全部流量走系统代理，校内资源仍走 VPN。支持 *.example.com。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "白名單：僅這些網域走 OpenZweb（PAC 分流）。留空則全部流量走系統代理。每行一個網域；支援 *.example.com。"
+            "value": "白名單：網域會寫入引擎強制走 VPN，並用於 PAC 分流。引擎只接受網域；IP 僅用於 PAC 匹配（傳給引擎會導致啟動失敗）。留空 = 全部流量走系統代理，校內資源仍走 VPN。支援 *.example.com。"
           }
         }
       }
@@ -3412,19 +3412,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tip: with an allow list, only listed hosts hit OpenZweb — ideal for coexisting with other proxies. Empty allow list = global proxy."
+            "value": "Tip: engine matches domains (SNI/host), not bare IPs. Use real hostnames like scholar.edu.cn. Empty allow list = global system proxy + server resource rules."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "提示：填写白名单后，只有名单内域名进入 OpenZweb，便于与其他代理共存。白名单为空 = 全局系统代理。"
+            "value": "提示：引擎按域名（不是裸 IP）强制代理。请填写 scholar.edu.cn 这类域名。白名单为空 = 全局系统代理 + 服务器资源规则。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "提示：填寫白名單後，只有名單內網域進入 OpenZweb，便於與其他代理共存。白名單為空 = 全域系統代理。"
+            "value": "提示：引擎按網域（不是裸 IP）強制代理。請填寫 scholar.edu.cn 這類網域。白名單為空 = 全域系統代理 + 伺服器資源規則。"
           }
         }
       }
@@ -5229,19 +5229,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "While connected, applies immediately via PAC / system proxy — no disconnect or re-login."
+            "value": "While connected: PAC updates immediately. Changing force-VPN domains soft-restarts the engine (may require SMS again)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已连接时可立即生效（更新 PAC / 系统代理），无需断开或重新登录。"
+            "value": "已连接时：PAC 立即生效；若强制 VPN 域名有变化会软重启引擎（可能需重新短信验证）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已連線時可立即生效（更新 PAC / 系統代理），無需中斷或重新登入。"
+            "value": "已連線時：PAC 立即生效；若強制 VPN 網域有變化會軟重啟引擎（可能需重新簡訊驗證）。"
           }
         }
       }
@@ -5334,6 +5334,50 @@
           "stringUnit": {
             "state": "translated",
             "value": "關閉"
+          }
+        }
+      }
+    },
+    "egg.missing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Video not found in the app bundle."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未找到彩蛋视频（应用资源缺失）。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未找到彩蛋影片（應用資源缺失）。"
+          }
+        }
+      }
+    },
+    "egg.play_error": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not play the video."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法播放彩蛋视频。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法播放彩蛋影片。"
           }
         }
       }

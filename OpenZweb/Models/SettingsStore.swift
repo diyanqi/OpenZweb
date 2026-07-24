@@ -4,12 +4,18 @@ import Combine
 @MainActor
 final class SettingsStore: ObservableObject {
     @Published var settings: AppSettings {
-        didSet { settings.save() }
+        didSet {
+            // Keep L10n in sync when language is mutated via Binding.
+            if oldValue.appLanguage != settings.appLanguage {
+                LanguageController.shared.apply(settings.appLanguage)
+            }
+            settings.save()
+        }
     }
 
     init() {
         settings = AppSettings.load()
-        L10n.apply(language: settings.appLanguage)
+        LanguageController.shared.apply(settings.appLanguage)
     }
 
     func persist() {

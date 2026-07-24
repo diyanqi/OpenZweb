@@ -133,6 +133,38 @@ struct AppSettings: Codable, Equatable {
     var proxyAllowDomains: [String] { Self.parseDomainList(proxyAllowList) }
     var proxyDenyDomains: [String] { Self.parseDomainList(proxyDenyList) }
 
+    /// True for IPv4 / IPv6 literals (zju-connect rejects these in custom_proxy_domain).
+    static func isIPAddress(_ raw: String) -> Bool {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s.hasPrefix("www.") { s = String(s.dropFirst(4)) }
+        if s.isEmpty { return false }
+        let v4 = s.split(separator: ".")
+        if v4.count == 4 {
+            let ok = v4.allSatisfy { part in
+                guard !part.isEmpty, part.count <= 3,
+                      part.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) }),
+                      let n = Int(part) else { return false }
+                return (0...255).contains(n)
+            }
+            if ok { return true }
+        }
+        if s.contains(":") {
+            let allowed = CharacterSet(charactersIn: "0123456789abcdef:")
+            if !s.isEmpty, s.unicodeScalars.allSatisfy({ allowed.contains($0) }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Hostnames suitable for zju-connect `custom_proxy_domain` (must not be IP literals).
+    static func isEngineDomain(_ raw: String) -> Bool {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !s.isEmpty, s.contains("."), !isIPAddress(s) else { return false }
+        guard s.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) }) else { return false }
+        return true
+    }
+
     static func load() -> AppSettings {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               var decoded = try? JSONDecoder().decode(AppSettings.self, from: data) else {

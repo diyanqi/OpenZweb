@@ -58,7 +58,7 @@ struct SettingsView: View {
                         }
                     }
                     .onChange(of: store.settings.appLanguage) { _, lang in
-                        L10n.apply(language: lang)
+                        LanguageController.shared.apply(lang)
                         store.persist()
                     }
                 }

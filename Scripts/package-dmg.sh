@@ -42,7 +42,7 @@ codesign --verify --verbose=1 "$STAGE/$APP_NAME" 2>/dev/null || true
 ln -s /Applications "$STAGE/Applications"
 
 DMG_RW="$OUT_DIR/OpenZweb-${VERSION}-rw.dmg"
-DMG_FINAL="$OUT_DIR/OpenZweb-${VERSION}-macos-arm64.dmg"
+DMG_FINAL="$OUT_DIR/OpenZweb-${VERSION}-macos-universal.dmg"
 rm -f "$DMG_RW" "$DMG_FINAL"
 
 hdiutil create \

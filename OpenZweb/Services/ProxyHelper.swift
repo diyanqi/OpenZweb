@@ -14,12 +14,24 @@ enum ProxyHelper {
         let denyJS = jsStringArray(denyList)
         return """
         function hostMatchesList(host, list) {
-            host = host.toLowerCase();
+            host = (host || "").toLowerCase();
             for (var i = 0; i < list.length; i++) {
-                var d = list[i].toLowerCase();
+                var d = (list[i] || "").toLowerCase();
                 if (!d) continue;
-                if (host === d || host.endsWith("." + d)) return true;
+                // Exact host or IP match.
+                if (host === d) return true;
+                // Domain suffix match (example.com matches a.example.com).
+                if (host.endsWith("." + d)) return true;
             }
+            return false;
+        }
+
+        function isIPLiteral(host) {
+            if (!host) return false;
+            // IPv4
+            if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return true;
+            // rough IPv6
+            if (host.indexOf(":") >= 0) return true;
             return false;
         }
 
@@ -27,24 +39,39 @@ enum ProxyHelper {
             if (!host) return "DIRECT";
             host = host.toLowerCase();
 
-            // Explicit deny / bypass list always wins.
+            // Explicit deny / bypass list always wins (domains + IPs).
             var denyList = \(denyJS);
             if (hostMatchesList(host, denyList)) {
                 return "DIRECT";
             }
 
-            if (isPlainHostName(host) ||
-                shExpMatch(host, "*.local") ||
-                isInNet(dnsResolve(host), "10.0.0.0", "255.0.0.0") ||
-                isInNet(dnsResolve(host), "172.16.0.0", "255.240.0.0") ||
-                isInNet(dnsResolve(host), "192.168.0.0", "255.255.0.0") ||
-                isInNet(dnsResolve(host), "127.0.0.0", "255.0.0.0")) {
+            // Local / private ranges stay direct (skip dnsResolve for IP literals).
+            if (isPlainHostName(host) || shExpMatch(host, "*.local")) {
                 return "DIRECT";
+            }
+            if (!isIPLiteral(host)) {
+                try {
+                    var resolved = dnsResolve(host);
+                    if (resolved && (
+                        isInNet(resolved, "10.0.0.0", "255.0.0.0") ||
+                        isInNet(resolved, "172.16.0.0", "255.240.0.0") ||
+                        isInNet(resolved, "192.168.0.0", "255.255.0.0") ||
+                        isInNet(resolved, "127.0.0.0", "255.0.0.0"))) {
+                        return "DIRECT";
+                    }
+                } catch (e) {}
+            } else {
+                if (isInNet(host, "10.0.0.0", "255.0.0.0") ||
+                    isInNet(host, "172.16.0.0", "255.240.0.0") ||
+                    isInNet(host, "192.168.0.0", "255.255.0.0") ||
+                    isInNet(host, "127.0.0.0", "255.0.0.0")) {
+                    return "DIRECT";
+                }
             }
 
             var allowList = \(allowJS);
             if (allowList.length > 0) {
-                // When allow-list is set, only listed domains use the VPN proxy.
+                // Only listed domains/IPs enter OpenZweb local proxy.
                 if (!hostMatchesList(host, allowList)) {
                     return "DIRECT";
                 }
