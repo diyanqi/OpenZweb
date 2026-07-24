@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		006E3989234E4CDF893E4D48 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 5072FE3823DA4DC39DAB5F13 /* Localizable.xcstrings */; };
+		87BA6ADB8EAC48BDBC3E2576 /* L10n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B68A2E793824978AED28631 /* L10n.swift */; };
 		B23E4D48EB47440F9F1311E3 /* RoutingRulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4260C250D672471AA236A381 /* RoutingRulesView.swift */; };
 		E4F5A6B7C8D94E0F1A2B3C4D /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A2B3C4D5E64789A0B1C2D3 /* UpdateChecker.swift */; };
 		EF0C6D06918A46CF853DDBCC /* SparklineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBA50C313D341AE8DED9FFF /* SparklineView.swift */; };
@@ -34,6 +36,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		5072FE3823DA4DC39DAB5F13 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		6B68A2E793824978AED28631 /* L10n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L10n.swift; sourceTree = "<group>"; };
 		C1A2B3C4D5E64789A0B1C2D3 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
 		0FBA50C313D341AE8DED9FFF /* SparklineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparklineView.swift; sourceTree = "<group>"; };
 		025B609CFA2F4CB8B48E60CE /* OTPInputView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OTPInputView.swift; sourceTree = "<group>"; };
@@ -129,6 +133,7 @@
 			isa = PBXGroup;
 			children = (
 				35C36F8D15B948EE9C773685 /* Assets.xcassets */,
+				5072FE3823DA4DC39DAB5F13 /* Localizable.xcstrings */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -145,6 +150,7 @@
 			isa = PBXGroup;
 			children = (
 				0DA59D6CFFA74227B33218C1 /* App */,
+				6B68A2E793824978AED28631 /* L10n.swift */,
 				1A3131DBECB44210B9876E46 /* Models */,
 				1E3D8996C48044FBBB998B0C /* Services */,
 				AD6D1DBF03CC4EC9B4B2CEAB /* Views */,
@@ -218,6 +224,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				006E3989234E4CDF893E4D48 /* Localizable.xcstrings in Resources */,
 				3C998CC5D34E459984434C59 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -229,6 +236,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				87BA6ADB8EAC48BDBC3E2576 /* L10n.swift in Sources */,
 				C2CF0D11EC29477E9D5B2CDC /* AboutView.swift in Sources */,
 				3A91ECF55CD9491BACAFF3DC /* ProxyHelper.swift in Sources */,
 				103BB3EAA2F0467ABFDAC1FC /* NetworkMonitor.swift in Sources */,

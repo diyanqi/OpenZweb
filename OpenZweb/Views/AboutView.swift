@@ -27,31 +27,31 @@ struct AboutView: View {
 
                 Text("OpenZweb")
                     .font(.system(.title, design: .rounded).weight(.bold))
-                Text("浙江大学 · aTrust 原生客户端")
+                Text(L10n.t("about.tagline"))
                     .foregroundStyle(.secondary)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("版本", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
-                    LabeledContent("协议引擎", value: "zju-connect")
-                    LabeledContent("兼容", value: "深信服 aTrust / EZ4Connect")
+                    LabeledContent(L10n.t("about.version"), value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
+                    LabeledContent(L10n.t("about.engine"), value: "zju-connect")
+                    LabeledContent(L10n.t("about.compat"), value: L10n.t("about.compat_value"))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("本项目")
+                    Text(L10n.t("about.project"))
                         .font(.headline)
                     creditRow(
                         title: "diyanqi/openZweb",
-                        subtitle: "Swift 原生 macOS 客户端",
+                        subtitle: L10n.t("about.project_sub"),
                         url: projectURL
                     )
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("鸣谢开源项目")
+                    Text(L10n.t("about.thanks"))
                         .font(.headline)
                     ForEach(thanks, id: \.0) { item in
                         creditRow(title: item.0, subtitle: item.1, url: item.2)
@@ -59,13 +59,13 @@ struct AboutView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text("仅供校内学习科研网络访问。请遵守学校与相关服务条款。")
+                Text(L10n.t("about.disclaimer_short"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
 
-                Button("关闭") { dismiss() }
+                Button(L10n.t("common.close")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .buttonStyle(.borderedProminent)
                     .padding(.bottom, 8)

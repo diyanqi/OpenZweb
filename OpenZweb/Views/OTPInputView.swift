@@ -117,9 +117,9 @@ struct SMSOTPSheet: View {
                 .foregroundStyle(.tint)
                 .symbolRenderingMode(.hierarchical)
 
-            Text("短信验证码")
+            Text(L10n.t("sms.title"))
                 .font(.title2.weight(.semibold))
-            Text("请输入发送到绑定手机的 6 位验证码")
+            Text(L10n.t("sms.hint"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -139,7 +139,7 @@ struct SMSOTPSheet: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("正在校验验证码…")
+                    Text(L10n.t("sms.verifying"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -147,7 +147,7 @@ struct SMSOTPSheet: View {
             }
 
             if engine.smsAllowsSkipSecondary {
-                Toggle("跳过以后的短信验证", isOn: $engine.skipSecondaryAuth)
+                Toggle(L10n.t("sms.skip_secondary"), isOn: $engine.skipSecondaryAuth)
                     .toggleStyle(.checkbox)
                     .font(.callout)
                     .disabled(engine.isSubmittingSMS)
@@ -159,7 +159,7 @@ struct SMSOTPSheet: View {
                     Text(smsError)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.red)
-                    Text("输入框会抖动提示错误，请重新输入 6 位验证码后提交")
+                    Text(L10n.t("sms.reenter"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -168,14 +168,14 @@ struct SMSOTPSheet: View {
             }
 
             HStack(spacing: 12) {
-                Button("取消") {
+                Button(L10n.t("common.cancel")) {
                     engine.disconnect()
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
                 .disabled(engine.isSubmittingSMS)
 
-                Button("提交") {
+                Button(L10n.t("common.submit")) {
                     engine.submitSMS()
                 }
                 .buttonStyle(.borderedProminent)

@@ -80,6 +80,18 @@ sudo xattr -dr com.apple.quarantine /Applications/OpenZweb.app
 
 ---
 
+## 语言 / Languages
+
+界面跟随系统语言（**系统设置 → 语言与地区**）：
+
+| Language | Code |
+|----------|------|
+| English | `en` |
+| 简体中文 | `zh-Hans` |
+| 繁體中文 | `zh-Hant` |
+
+重启应用后生效。字符串目录：`OpenZweb/Resources/Localizable.xcstrings`。
+
 ## 环境
 
 - macOS 14+

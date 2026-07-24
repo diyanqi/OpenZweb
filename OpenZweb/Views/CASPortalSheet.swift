@@ -31,19 +31,19 @@ struct CASPortalSheet: View {
                 Spacer()
 
                 Link(destination: url) {
-                    Label("在浏览器中打开", systemImage: "safari")
+                    Label(L10n.t("cas.open_browser"), systemImage: "safari")
                 }
-                Button("关闭") { isPresented = false }
+                Button(L10n.t("common.close")) { isPresented = false }
                     .keyboardShortcut(.cancelAction)
             }
             .padding()
 
             // This sheet is a convenience browser only — it does NOT inject tickets into zju-connect.
             VStack(alignment: .leading, spacing: 6) {
-                Label("说明：此处仅打开网页，登录成功后不会自动连 VPN。", systemImage: "info.circle")
+                Label(L10n.t("cas.note"), systemImage: "info.circle")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("要用统一身份认证连内网：在主界面认证方式选「统一身份认证 (CAS)」，再点「连接内网」，由协议引擎完成 CAS 流程。")
+                Text(L10n.t("cas.howto"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

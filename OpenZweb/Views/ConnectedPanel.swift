@@ -57,9 +57,9 @@ struct ConnectedPanel: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
             }
-            Text("已接入浙江大学内网")
+            Text(L10n.t("connected.title"))
                 .font(.system(.title, design: .rounded).weight(.bold))
-            Text("\(engine.activeMode.displayName) · 已连接 \(uptimeText)")
+            Text(L10n.format("connected.uptime", engine.activeMode.displayName, uptimeText))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -69,7 +69,7 @@ struct ConnectedPanel: View {
     private var monitorCard: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Label("实时吞吐", systemImage: "waveform.path.ecg")
+                Label(L10n.t("connected.throughput"), systemImage: "waveform.path.ecg")
                     .font(.headline)
                 Spacer()
                 Button {
@@ -83,7 +83,7 @@ struct ConnectedPanel: View {
                     if monitor.isChecking {
                         ProgressView().controlSize(.small)
                     } else {
-                        Label("检测公网 IP", systemImage: "globe")
+                        Label(L10n.t("connected.check_ip"), systemImage: "globe")
                     }
                 }
                 .buttonStyle(.bordered)
@@ -91,8 +91,8 @@ struct ConnectedPanel: View {
             }
 
             HStack(spacing: 18) {
-                ratePill(title: "下载", value: NetworkMonitor.formatRate(monitor.downBps), color: .accentColor)
-                ratePill(title: "上传", value: NetworkMonitor.formatRate(monitor.upBps), color: .orange)
+                ratePill(title: L10n.t("connected.download"), value: NetworkMonitor.formatRate(monitor.downBps), color: .accentColor)
+                ratePill(title: L10n.t("connected.upload"), value: NetworkMonitor.formatRate(monitor.upBps), color: .orange)
             }
 
             SparklineView(
@@ -104,7 +104,7 @@ struct ConnectedPanel: View {
             VStack(alignment: .leading, spacing: 6) {
                 if let ip = monitor.publicIP {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("公网 IP")
+                        Text(L10n.t("connected.public_ip"))
                             .foregroundStyle(.secondary)
                         Text(ip)
                             .font(.body.monospaced())
@@ -114,7 +114,7 @@ struct ConnectedPanel: View {
                 }
                 if let loc = monitor.publicIPLocation, !loc.isEmpty {
                     HStack(alignment: .firstTextBaseline) {
-                        Text("归属地")
+                        Text(L10n.t("connected.geo"))
                             .foregroundStyle(.secondary)
                         Text(loc)
                             .textSelection(.enabled)
@@ -125,7 +125,7 @@ struct ConnectedPanel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                Text(NetworkMonitor.geoDisclaimer)
+                Text(L10n.t("connected.geo_disclaimer"))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -155,17 +155,17 @@ struct ConnectedPanel: View {
 
     private var endpointsCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("接入信息")
+            Text(L10n.t("connected.info"))
                 .font(.headline)
 
             // Mode is fixed for this session — live TUN/proxy switch needs re-auth in zju-connect.
-            infoRow("模式", engine.activeMode == .tun ? "TUN 虚拟网卡" : "代理 (SOCKS5 / HTTP)")
+            infoRow(L10n.t("sidebar.mode"), engine.activeMode == .tun ? L10n.t("mode.tun_full") : L10n.t("mode.proxy_socks_http"))
             if engine.activeMode == .tun {
-                Text("系统级虚拟网卡；如需改为代理模式，请断开后在登录页切换再连接。")
+                Text(L10n.t("connected.mode_tun_hint"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                Text("应用通过本机 SOCKS/HTTP 代理访问内网；如需 TUN，请断开后在登录页切换。")
+                Text(L10n.t("connected.mode_proxy_hint"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -194,21 +194,21 @@ struct ConnectedPanel: View {
 
     private var lanCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("局域网共享", systemImage: "antenna.radiowaves.left.and.right")
+            Label(L10n.t("connected.lan_share"), systemImage: "antenna.radiowaves.left.and.right")
                 .font(.headline)
             if let ip = ProxyHelper.primaryLANAddress() {
-                infoRow("本机局域网 IP", ip)
+                infoRow(L10n.t("connected.lan_ip"), ip)
             } else {
-                Text("未检测到局域网地址")
+                Text(L10n.t("connected.lan_none"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             infoRow("SOCKS5", effectiveSocks)
             infoRow("HTTP", effectiveHTTP)
-            Text("其他设备请在同一网络下，将系统/App 代理指向上述地址与端口。二维码仅为纯文本，无法自动改系统设置，故仅展示连接信息。")
+            Text(L10n.t("connected.lan_hint"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-            Button("显示连接信息") { showLANShare = true }
+            Button(L10n.t("connected.lan_show")) { showLANShare = true }
                 .buttonStyle(.bordered)
         }
         .padding(18)
@@ -222,14 +222,14 @@ struct ConnectedPanel: View {
                 .foregroundStyle(Color(red: 0.78, green: 0.18, blue: 0.22))
                 .frame(width: 36)
             VStack(alignment: .leading, spacing: 4) {
-                Text("浙大导航")
+                Text(L10n.t("connected.nav_title"))
                     .font(.headline)
-                Text("常用校内站点入口 · zjuers.com")
+                Text(L10n.t("connected.nav_sub"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("前往导航页") {
+            Button(L10n.t("connected.nav_go")) {
                 if let url = URL(string: "https://zjuers.com/") {
                     NSWorkspace.shared.open(url)
                 }
@@ -251,19 +251,19 @@ struct ConnectedPanel: View {
                         denyList: store.settings.proxyDenyDomains
                     )
                     ProxyHelper.revealInFinder(url)
-                    pacMessage = "已导出 PAC"
+                    pacMessage = L10n.t("connected.pac_exported")
                 } catch {
                     pacMessage = error.localizedDescription
                 }
             } label: {
-                Label("导出 PAC", systemImage: "doc.badge.gearshape")
+                Label(L10n.t("connected.export_pac"), systemImage: "doc.badge.gearshape")
             }
             .buttonStyle(.bordered)
 
             Button(role: .destructive) {
                 engine.disconnect()
             } label: {
-                Label("断开连接", systemImage: "xmark.circle")
+                Label(L10n.t("connected.disconnect"), systemImage: "xmark.circle")
             }
             .buttonStyle(.borderedProminent)
             .tint(.red)
@@ -307,9 +307,9 @@ struct LANShareSheet: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Text("局域网代理连接信息")
+            Text(L10n.t("connected.lan_sheet_title"))
                 .font(.title2.weight(.semibold))
-            Text("请在其他设备上手动填写下列代理。需与本机同一 Wi‑Fi，并允许 macOS 防火墙通过。")
+            Text(L10n.t("connected.lan_sheet_hint"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -323,11 +323,11 @@ struct LANShareSheet: View {
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
 
             HStack {
-                Button("复制全部") {
+                Button(L10n.t("connected.copy_all")) {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(payload, forType: .string)
                 }
-                Button("完成") { dismiss() }
+                Button(L10n.t("common.done")) { dismiss() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }

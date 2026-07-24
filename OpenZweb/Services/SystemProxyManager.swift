@@ -44,18 +44,23 @@ enum SystemProxyManager {
         var detail: String
     }
 
-    /// Returns a conflict if the **effective** system proxy is not empty.
+    /// Returns a conflict if the **effective** system proxy is not empty,
+    /// excluding OpenZweb's own leftover local proxy (127.0.0.1:http/socks).
     /// Uses `scutil --proxy` first (what apps actually see), then networksetup as fallback.
     /// Does not inspect running apps or mention third-party product names.
-    static func detectActiveSystemProxy() -> Conflict? {
-        if let conflict = detectViaScutil() {
+    static func detectActiveSystemProxy(
+        httpBind: String? = nil,
+        socksBind: String? = nil
+    ) -> Conflict? {
+        let ours = ownedEndpoints(httpBind: httpBind, socksBind: socksBind)
+        if let conflict = detectViaScutil(owned: ours) {
             return conflict
         }
         // Fallback: per-service networksetup (read-only, never admin).
         if let services = try? listNetworkServices(readOnly: true) {
             for service in services {
                 if let state = try? readState(service: service, readOnly: true) {
-                    if state.webEnabled || state.secureEnabled || state.socksEnabled {
+                    if foreignProxyEnabled(state: state, owned: ours) {
                         return Self.systemProxyConflictMessage
                     }
                 }
@@ -68,21 +73,82 @@ enum SystemProxyManager {
     }
 
     /// Human summary for logs / UI even when empty.
-    static func proxyCheckSummary() -> String {
-        if let conflict = detectActiveSystemProxy() {
-            return "未通过：\(conflict.title)"
+    static func proxyCheckSummary(httpBind: String? = nil, socksBind: String? = nil) -> String {
+        if let conflict = detectActiveSystemProxy(httpBind: httpBind, socksBind: socksBind) {
+            return L10n.format("proxy.check_fail", conflict.title)
         }
-        return "通过：当前系统代理为空"
+        if isLikelyOpenZwebResidualProxy(httpBind: httpBind, socksBind: socksBind) {
+            return L10n.t("proxy.check_pass_self")
+        }
+        return L10n.t("proxy.check_pass_empty")
+    }
+
+    /// True when system proxy is on but only points at OpenZweb local binds.
+    static func isLikelyOpenZwebResidualProxy(httpBind: String? = nil, socksBind: String? = nil) -> Bool {
+        let ours = ownedEndpoints(httpBind: httpBind, socksBind: socksBind)
+        guard !ours.isEmpty else { return false }
+        // Prefer scutil snapshot
+        if let text = scutilProxyText() {
+            let anyOn =
+                scutilFlagEnabled(text, key: "HTTPEnable")
+                || scutilFlagEnabled(text, key: "HTTPSEnable")
+                || scutilFlagEnabled(text, key: "SOCKSEnable")
+            if !anyOn { return false }
+            if scutilFlagEnabled(text, key: "ProxyAutoConfigEnable")
+                || scutilFlagEnabled(text, key: "ProxyAutoDiscoveryEnable") {
+                return false
+            }
+            return !foreignProxyInScutil(text, owned: ours)
+        }
+        return UserDefaults.standard.bool(forKey: appliedKey)
     }
 
     private static var systemProxyConflictMessage: Conflict {
         Conflict(
-            title: "请先关闭系统代理",
-            detail: "检测到系统代理已开启（HTTP / HTTPS / SOCKS 或自动代理）。请到「系统设置 → 网络 → 详细信息 → 代理」关闭全部开关后再连接。\n（OpenZweb 连接成功后会自行设置代理，连接前需要是干净状态。）"
+            title: L10n.t("proxy.conflict_title"),
+            detail: L10n.t("proxy.conflict_detail")
         )
     }
 
-    private static func detectViaScutil() -> Conflict? {
+    /// Local endpoints we manage: configured binds + common defaults.
+    private static func ownedEndpoints(httpBind: String?, socksBind: String?) -> Set<String> {
+        var set = Set<String>()
+        func add(_ bind: String?) {
+            guard let ep = bind.flatMap(Endpoint.parse) else { return }
+            for host in ["127.0.0.1", "localhost", "::1"] {
+                set.insert("\(host):\(ep.port)")
+            }
+        }
+        add(httpBind)
+        add(socksBind)
+        // Defaults used by OpenZweb
+        for port in [1080, 1081] {
+            for host in ["127.0.0.1", "localhost", "::1"] {
+                set.insert("\(host):\(port)")
+            }
+        }
+        return set
+    }
+
+    private static func endpointKey(host: String, port: Int) -> String {
+        var h = host.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if h.isEmpty || h == "0.0.0.0" || h == "*" || h == "::" { h = "127.0.0.1" }
+        if h == "localhost" || h == "::1" { h = "127.0.0.1" }
+        return "\(h):\(port)"
+    }
+
+    private static func isOwned(_ host: String, _ port: Int, owned: Set<String>) -> Bool {
+        owned.contains(endpointKey(host: host, port: port))
+    }
+
+    private static func foreignProxyEnabled(state: ServiceState, owned: Set<String>) -> Bool {
+        if state.webEnabled, !isOwned(state.webHost, state.webPort, owned: owned) { return true }
+        if state.secureEnabled, !isOwned(state.secureHost, state.securePort, owned: owned) { return true }
+        if state.socksEnabled, !isOwned(state.socksHost, state.socksPort, owned: owned) { return true }
+        return false
+    }
+
+    private static func scutilProxyText() -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/scutil")
         process.arguments = ["--proxy"]
@@ -95,24 +161,70 @@ enum SystemProxyManager {
             let data = out.fileHandleForReading.readDataToEndOfFile()
             _ = err.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
-            guard process.terminationStatus == 0,
-                  let text = String(data: data, encoding: .utf8) else {
-                return nil
-            }
-            // scutil --proxy prints keys like HTTPEnable : 1
-            let enabledKeys = [
-                "HTTPEnable", "HTTPSEnable", "SOCKSEnable",
-                "ProxyAutoConfigEnable", "ProxyAutoDiscoveryEnable"
-            ]
-            for key in enabledKeys {
-                if scutilFlagEnabled(text, key: key) {
-                    return Self.systemProxyConflictMessage
-                }
-            }
-            return nil
+            guard process.terminationStatus == 0 else { return nil }
+            return String(data: data, encoding: .utf8)
         } catch {
             return nil
         }
+    }
+
+    private static func scutilString(_ text: String, key: String) -> String? {
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix(key) || trimmed.contains("\(key) ") else { continue }
+            // "HTTPProxy : 127.0.0.1"
+            if let r = trimmed.range(of: #":\s*(.+)$"#, options: .regularExpression) {
+                var v = String(trimmed[r])
+                if let colon = v.firstIndex(of: ":") {
+                    v = String(v[v.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+                }
+                return v
+            }
+        }
+        return nil
+    }
+
+    private static func scutilInt(_ text: String, key: String) -> Int? {
+        guard let s = scutilString(text, key: key) else { return nil }
+        return Int(s.filter(\.isNumber)) ?? Int(s)
+    }
+
+    private static func foreignProxyInScutil(_ text: String, owned: Set<String>) -> Bool {
+        if scutilFlagEnabled(text, key: "HTTPEnable") {
+            let host = scutilString(text, key: "HTTPProxy") ?? ""
+            let port = scutilInt(text, key: "HTTPPort") ?? 0
+            if !isOwned(host, port, owned: owned) { return true }
+        }
+        if scutilFlagEnabled(text, key: "HTTPSEnable") {
+            let host = scutilString(text, key: "HTTPSProxy") ?? ""
+            let port = scutilInt(text, key: "HTTPSPort") ?? 0
+            if !isOwned(host, port, owned: owned) { return true }
+        }
+        if scutilFlagEnabled(text, key: "SOCKSEnable") {
+            let host = scutilString(text, key: "SOCKSProxy") ?? ""
+            let port = scutilInt(text, key: "SOCKSPort") ?? 0
+            if !isOwned(host, port, owned: owned) { return true }
+        }
+        return false
+    }
+
+    private static func detectViaScutil(owned: Set<String>) -> Conflict? {
+        guard let text = scutilProxyText() else { return nil }
+        // PAC / WPAD from third parties always conflict.
+        if scutilFlagEnabled(text, key: "ProxyAutoConfigEnable")
+            || scutilFlagEnabled(text, key: "ProxyAutoDiscoveryEnable") {
+            return Self.systemProxyConflictMessage
+        }
+        let anyManual =
+            scutilFlagEnabled(text, key: "HTTPEnable")
+            || scutilFlagEnabled(text, key: "HTTPSEnable")
+            || scutilFlagEnabled(text, key: "SOCKSEnable")
+        guard anyManual else { return nil }
+        if foreignProxyInScutil(text, owned: owned) {
+            return Self.systemProxyConflictMessage
+        }
+        // Only OpenZweb residual — not a conflict.
+        return nil
     }
 
     private static func scutilFlagEnabled(_ text: String, key: String) -> Bool {

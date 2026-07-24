@@ -9,8 +9,8 @@ enum VPNProtocolKind: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .atrust: return "aTrust"
-        case .easyconnect: return "EasyConnect"
+        case .atrust: return L10n.t("proto.atrust")
+        case .easyconnect: return L10n.t("proto.easyconnect")
         }
     }
 }
@@ -24,9 +24,9 @@ enum AuthMethod: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .password: return "学号密码"
-        case .cas: return "统一身份认证 (CAS)"
-        case .sms: return "短信验证码"
+        case .password: return L10n.t("auth.password")
+        case .cas: return L10n.t("auth.cas")
+        case .sms: return L10n.t("auth.sms")
         }
     }
 }
@@ -39,17 +39,17 @@ enum ConnectionMode: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .proxy: return "代理模式 (SOCKS5/HTTP)"
-        case .tun: return "TUN 全局虚拟网卡"
+        case .proxy: return L10n.t("conn.proxy_desc")
+        case .tun: return L10n.t("conn.tun_desc")
         }
     }
 
     var detail: String {
         switch self {
         case .proxy:
-            return "无需管理员权限，应用自行配置代理即可访问内网。"
+            return L10n.t("conn.proxy_detail")
         case .tun:
-            return "系统级路由，全应用可直连内网。需要输入管理员密码。"
+            return L10n.t("conn.tun_detail")
         }
     }
 }
@@ -166,15 +166,15 @@ enum ConnectionPhase: Equatable {
 
     var title: String {
         switch self {
-        case .idle: return "未连接"
-        case .preparing: return "准备中"
-        case .authenticating: return "正在认证"
-        case .waitingCaptcha: return "等待验证码"
-        case .waitingSMS: return "等待短信验证码"
-        case .connecting: return "正在建立隧道"
-        case .connected: return "已连接"
-        case .disconnecting: return "正在断开"
-        case .failed: return "连接失败"
+        case .idle: return L10n.t("phase.idle")
+        case .preparing: return L10n.t("phase.preparing")
+        case .authenticating: return L10n.t("phase.authenticating")
+        case .waitingCaptcha: return L10n.t("phase.waiting_captcha")
+        case .waitingSMS: return L10n.t("phase.waiting_sms")
+        case .connecting: return L10n.t("phase.connecting")
+        case .connected: return L10n.t("phase.connected")
+        case .disconnecting: return L10n.t("phase.disconnecting")
+        case .failed: return L10n.t("phase.failed")
         }
     }
 

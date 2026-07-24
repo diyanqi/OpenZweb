@@ -68,16 +68,35 @@ final class ConnectEngine: ObservableObject {
         }
     }
 
-    /// Only used by the connect-time alert actions (re-check / dismiss).
-    func refreshProxyConflict(settings: AppSettings? = nil) {
-        _ = settings
-        proxyConflict = SystemProxyManager.detectActiveSystemProxy()
+    /// Re-detect system proxy. If clear (or only OpenZweb residual), resume connect.
+    func recheckProxyConflictAndContinue() {
+        let http = lastSettings?.httpBind
+        let socks = lastSettings?.socksBind
+        let summary = SystemProxyManager.proxyCheckSummary(httpBind: http, socksBind: socks)
+        appendLog("[OpenZweb] " + L10n.format("log.recheck", summary))
+        if let conflict = SystemProxyManager.detectActiveSystemProxy(httpBind: http, socksBind: socks) {
+            // Still conflict — keep dialog open with refreshed message.
+            proxyConflict = conflict
+            return
+        }
+        proxyConflict = nil
+        guard let settings = lastSettings else { return }
+        // Resume the connect that was interrupted by the warning.
+        connect(settings: settings, password: lastPassword)
     }
 
+    /// User chose to proceed even with foreign system proxy.
+    func continueDespiteProxyConflict() {
+        proxyConflict = nil
+        skipProxyCheckOnce = true
+        appendLog("[OpenZweb] " + L10n.t("log.continue_anyway"))
+        guard let settings = lastSettings else { return }
+        connect(settings: settings, password: lastPassword)
+    }
+
+    /// Clear alert without connecting (e.g. user dismissed).
     func dismissProxyConflictWarning() {
         proxyConflict = nil
-        // Next connect may proceed once without re-blocking.
-        skipProxyCheckOnce = true
     }
 
     func refreshCoreBinary() {
@@ -138,22 +157,35 @@ final class ConnectEngine: ObservableObject {
             if skipProxyCheckOnce {
                 skipProxyCheckOnce = false
                 proxyConflict = nil
-                appendLog("[OpenZweb] 连接前检查：已按用户选择跳过一次系统代理检测")
+                appendLog("[OpenZweb] " + L10n.t("log.skip_once"))
             } else {
-                let summary = SystemProxyManager.proxyCheckSummary()
-                appendLog("[OpenZweb] 连接前检查：\(summary)")
-                if let conflict = SystemProxyManager.detectActiveSystemProxy() {
+                let summary = SystemProxyManager.proxyCheckSummary(
+                    httpBind: settings.httpBind,
+                    socksBind: settings.socksBind
+                )
+                appendLog("[OpenZweb] " + L10n.format("log.precheck", summary))
+                if SystemProxyManager.isLikelyOpenZwebResidualProxy(
+                    httpBind: settings.httpBind,
+                    socksBind: settings.socksBind
+                ) {
+                    appendLog("[OpenZweb] " + L10n.t("log.self_residual"))
+                    proxyConflict = nil
+                } else if let conflict = SystemProxyManager.detectActiveSystemProxy(
+                    httpBind: settings.httpBind,
+                    socksBind: settings.socksBind
+                ) {
                     proxyConflict = conflict
-                    // Stay idle; ContentView shows alert.
+                    // Stay idle; ContentView shows alert. Credentials already stored.
                     phase = .idle
                     return
+                } else {
+                    proxyConflict = nil
                 }
-                proxyConflict = nil
             }
         } else {
             skipProxyCheckOnce = false
             proxyConflict = nil
-            appendLog("[OpenZweb] 连接前检查：已跳过（未开启「连接后自动设置系统代理」，可与其他代理共存）")
+            appendLog("[OpenZweb] " + L10n.t("log.skip_manage_off"))
         }
 
         guard let info = CoreBinaryManager.resolveBinary() else {
@@ -175,7 +207,7 @@ final class ConnectEngine: ObservableObject {
             CredentialStore.deletePassword(account: settings.username)
         }
 
-        appendLog("[OpenZweb] 启动 aTrust 协议引擎…")
+        appendLog("[OpenZweb] " + L10n.t("log.start_engine"))
         appendLog("[OpenZweb] \(settings.serverAddress):\(settings.serverPort) · \(settings.protocolKind.displayName) · \(settings.connectionMode.displayName)")
 
         do {
@@ -221,7 +253,7 @@ final class ConnectEngine: ObservableObject {
         smsError = nil
         isSubmittingSMS = false
         phase = .disconnecting
-        appendLog("[OpenZweb] 正在断开连接…")
+        appendLog("[OpenZweb] " + L10n.t("log.disconnecting"))
 
         if elevated {
             // Best-effort kill elevated process by matching config path
@@ -273,9 +305,9 @@ final class ConnectEngine: ObservableObject {
         if let process, process.isRunning {
             writeLine(code)
             if shouldSkip {
-                appendLog("[OpenZweb] 已提交短信验证码（$ 前缀：请求跳过以后的短信验证）")
+                appendLog("[OpenZweb] " + L10n.t("log.sms_sent_skip"))
             } else {
-                appendLog("[OpenZweb] 已提交短信验证码")
+                appendLog("[OpenZweb] " + L10n.t("log.sms_sent"))
             }
             return
         }
@@ -613,7 +645,7 @@ final class ConnectEngine: ObservableObject {
                     captchaServerURL = url
                     holdSMSSheet = false
                     phase = .waitingCaptcha
-                    appendLog("[OpenZweb] 人机验证页面已在应用内打开，请点选验证码")
+                    appendLog("[OpenZweb] " + L10n.t("log.captcha_open"))
                 } else {
                     captchaServerURL = url
                 }
@@ -629,7 +661,7 @@ final class ConnectEngine: ObservableObject {
             if phase == .waitingCaptcha {
                 phase = .authenticating
             }
-            appendLog("[OpenZweb] 已收到验证码，继续认证…")
+            appendLog("[OpenZweb] " + L10n.t("log.captcha_ok"))
         }
 
         // Legacy EasyConnect image captcha only — never re-open aTrust after click captcha done,
@@ -692,7 +724,7 @@ final class ConnectEngine: ObservableObject {
             if phase != .connected {
                 phase = .failed(lastError!)
             }
-            appendLog("[OpenZweb] 认证失败: \(lastError!)")
+            appendLog("[OpenZweb] " + L10n.format("log.auth_fail", lastError!))
         }
 
         // Fake-IP / proxy leak hint
@@ -716,7 +748,7 @@ final class ConnectEngine: ObservableObject {
         captchaServerURL = nil
         if !elevated { captchaPollTask?.cancel() }
         wipeSensitivePasswordOnly()
-        appendLog("[OpenZweb] 隧道已建立 (\(activeMode.displayName))")
+        appendLog("[OpenZweb] " + L10n.format("log.tunnel_up", activeMode.displayName))
         if activeMode == .proxy {
             applySystemProxyIfNeededAsync()
         }
@@ -745,7 +777,7 @@ final class ConnectEngine: ObservableObject {
         }
 
         if manageProxy || manageDNS {
-            appendLog("[OpenZweb] 正在后台配置系统代理/DNS（不阻塞界面）…")
+            appendLog("[OpenZweb] " + L10n.t("log.proxy_applying"))
             if manageDNS {
                 if settings.tunMode {
                     appendLog("[OpenZweb] DNS 策略（TUN）：系统 DNS → 127.0.0.1，校内解析走隧道")
@@ -769,7 +801,7 @@ final class ConnectEngine: ObservableObject {
                 await MainActor.run {
                     engine.systemProxyManaged = manageProxy
                     if manageProxy {
-                        engine.appendLog("[OpenZweb] 已设置系统代理 → HTTP \(http) · SOCKS \(socks)")
+                        engine.appendLog("[OpenZweb] " + L10n.format("log.proxy_set", http, socks))
                     }
                     if manageDNS, let dnsForSystem {
                         engine.appendLog("[OpenZweb] 已设置系统 DNS → \(dnsForSystem.joined(separator: ", "))")
@@ -792,12 +824,12 @@ final class ConnectEngine: ObservableObject {
             || UserDefaults.standard.bool(forKey: "openzweb.systemDNS.applied")
         guard needs else { return }
         systemProxyManaged = false
-        appendLog("[OpenZweb] 正在后台恢复系统代理/DNS…")
+        appendLog("[OpenZweb] " + L10n.t("log.proxy_restoring"))
         Task.detached(priority: .userInitiated) { [weak self] in
             SystemProxyManager.restoreAllIfNeeded()
             guard let engine = self else { return }
             await MainActor.run {
-                engine.appendLog("[OpenZweb] 已恢复连接前的系统代理/DNS")
+                engine.appendLog("[OpenZweb] " + L10n.t("log.proxy_restore"))
             }
         }
     }
@@ -903,7 +935,7 @@ final class ConnectEngine: ObservableObject {
             guard token == smsShakeToken, !isSubmittingSMS else { return }
             smsCode = ""
         }
-        appendLog("[OpenZweb] 短信验证码错误: \(message)")
+        appendLog("[OpenZweb] " + L10n.format("log.sms_fail", message))
     }
 
     /// Relaunch zju-connect after a dead process so the user can re-submit SMS.

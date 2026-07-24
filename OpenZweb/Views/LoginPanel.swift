@@ -43,9 +43,9 @@ struct LoginPanel: View {
                 .frame(width: 72, height: 72)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
-            Text("浙江大学校内网")
+            Text(L10n.t("login.title"))
                 .font(.system(.largeTitle, design: .rounded).weight(.bold))
-            Text("深信服 aTrust · 优雅接入校园 VPN")
+            Text(L10n.t("login.subtitle"))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -54,20 +54,20 @@ struct LoginPanel: View {
 
     private var formCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            fieldLabel("学号 / 用户名")
-            TextField("例如 322010XXXX", text: $store.settings.username)
+            fieldLabel(L10n.t("login.username"))
+            TextField(L10n.t("login.username_ph"), text: $store.settings.username)
                 .textFieldStyle(.roundedBorder)
                 .focused($focusedField, equals: .username)
                 .disabled(engine.phase.isBusy)
 
-            fieldLabel("密码")
-            SecureField("统一身份认证 / 校园网密码", text: $password)
+            fieldLabel(L10n.t("login.password"))
+            SecureField(L10n.t("login.password_ph"), text: $password)
                 .textFieldStyle(.roundedBorder)
                 .focused($focusedField, equals: .password)
                 .disabled(engine.phase.isBusy)
                 .onSubmit(connect)
 
-            Picker("认证方式", selection: $store.settings.authMethod) {
+            Picker(L10n.t("login.auth_method"), selection: $store.settings.authMethod) {
                 ForEach(AuthMethod.allCases) { method in
                     Text(method.displayName).tag(method)
                 }
@@ -75,40 +75,40 @@ struct LoginPanel: View {
             .pickerStyle(.segmented)
             .disabled(engine.phase.isBusy)
 
-            Picker("连接模式", selection: $store.settings.connectionMode) {
+            Picker(L10n.t("login.conn_mode"), selection: $store.settings.connectionMode) {
                 ForEach(ConnectionMode.allCases) { mode in
-                    Text(mode == .proxy ? "代理" : "TUN").tag(mode)
+                    Text(mode == .proxy ? L10n.t("mode.proxy_short") : L10n.t("mode.tun")).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
             .disabled(engine.phase.isBusy)
 
             if store.settings.tunMode {
-                Label("TUN 需要管理员密码，可实现系统级内网访问", systemImage: "lock.shield")
+                Label(L10n.t("login.tun_hint"), systemImage: "lock.shield")
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
 
-            Toggle("记住密码（钥匙串）", isOn: $store.settings.rememberPassword)
+            Toggle(L10n.t("login.remember"), isOn: $store.settings.rememberPassword)
                 .disabled(engine.phase.isBusy)
 
-            Toggle("连接后自动设置系统代理", isOn: $store.settings.manageSystemProxy)
+            Toggle(L10n.t("login.manage_proxy"), isOn: $store.settings.manageSystemProxy)
                 .disabled(engine.phase.isBusy)
             if !store.settings.manageSystemProxy {
-                Text("与 Clash 共存：不改系统代理；把校内域名规则指到本机 SOCKS。")
+                Text(L10n.t("login.manage_proxy_hint"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            Toggle("连接后向局域网共享代理", isOn: $store.settings.shareOnLAN)
+            Toggle(L10n.t("login.share_lan"), isOn: $store.settings.shareOnLAN)
                 .disabled(engine.phase.isBusy)
             if store.settings.shareOnLAN {
-                Text("将监听 0.0.0.0，其他设备可填写本机 IP 与端口使用代理。")
+                Text(L10n.t("login.share_lan_hint"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
             HStack {
-                Text("登录域")
+                Text(L10n.t("login.domain"))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(store.settings.loginDomain)
@@ -134,7 +134,7 @@ struct LoginPanel: View {
     private var actionRow: some View {
         HStack(spacing: 12) {
             if engine.phase.isBusy {
-                Button("取消") { engine.disconnect() }
+                Button(L10n.t("common.cancel")) { engine.disconnect() }
                     .keyboardShortcut(.cancelAction)
             }
             Button(action: connect) {
@@ -142,7 +142,7 @@ struct LoginPanel: View {
                     if engine.phase.isBusy {
                         ProgressView().controlSize(.small)
                     }
-                    Text(engine.phase.isBusy ? engine.phase.title : "连接内网")
+                    Text(engine.phase.isBusy ? engine.phase.title : L10n.t("login.connect"))
                         .frame(minWidth: 128)
                 }
             }
@@ -175,17 +175,17 @@ struct LoginPanel: View {
 
     private var coreMissingBanner: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("尚未安装 aTrust 协议引擎", systemImage: "exclamationmark.triangle.fill")
+            Label(L10n.t("login.core_missing_title"), systemImage: "exclamationmark.triangle.fill")
                 .font(.headline)
                 .foregroundStyle(.orange)
-            Text("OpenZweb 使用开源 zju-connect 实现 aTrust / EasyConnect。")
+            Text(L10n.t("login.core_desc"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button {
                 Task { await engine.downloadCore() }
             } label: {
                 if engine.isDownloadingCore { ProgressView().controlSize(.small) }
-                else { Text("下载协议引擎") }
+                else { Text(L10n.t("login.download_engine")) }
             }
             .buttonStyle(.borderedProminent)
             .disabled(engine.isDownloadingCore)

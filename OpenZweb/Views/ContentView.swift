@@ -21,14 +21,14 @@ struct ContentView: View {
                 .background(DetailBackground())
         }
         .frame(minWidth: 860, minHeight: 680)
-        .alert("发现新版本", isPresented: Binding(
+        .alert(L10n.t("update.found"), isPresented: Binding(
             get: { updater.hasUpdate && !updater.bannerDismissed },
             set: { if !$0 { updater.clearBanner() } }
         )) {
             if let url = updater.releaseURL {
-                Button("查看发布页") { NSWorkspace.shared.open(url) }
+                Button(L10n.t("update.view")) { NSWorkspace.shared.open(url) }
             }
-            Button("稍后", role: .cancel) { updater.clearBanner() }
+            Button(L10n.t("common.later"), role: .cancel) { updater.clearBanner() }
         } message: {
             Text(updater.statusMessage ?? "")
         }
@@ -56,16 +56,24 @@ struct ContentView: View {
                 .environmentObject(engine)
         }
         .alert(
-            engine.proxyConflict?.title ?? "请先关闭系统代理",
+            engine.proxyConflict?.title ?? L10n.t("proxy.conflict_title"),
             isPresented: Binding(
                 get: { engine.proxyConflict != nil },
                 set: { present in
+                    // Dismiss (Esc / outside) only closes the sheet; does not auto-connect.
                     if !present { engine.dismissProxyConflictWarning() }
                 }
             )
         ) {
-            Button("重新检测") { engine.refreshProxyConflict() }
-            Button("仍然连接", role: .cancel) { engine.dismissProxyConflictWarning() }
+            Button(L10n.t("proxy.recheck")) {
+                engine.recheckProxyConflictAndContinue()
+            }
+            Button(L10n.t("proxy.connect_anyway")) {
+                engine.continueDespiteProxyConflict()
+            }
+            Button(L10n.t("common.cancel"), role: .cancel) {
+                engine.dismissProxyConflictWarning()
+            }
         } message: {
             Text(engine.proxyConflict?.detail ?? "")
         }
@@ -146,24 +154,24 @@ struct ContentView: View {
             Divider().opacity(0.45)
 
             VStack(alignment: .leading, spacing: 16) {
-                metaBlock(title: "协议", value: store.settings.protocolKind.displayName, icon: "lock.shield")
+                metaBlock(title: L10n.t("sidebar.protocol"), value: store.settings.protocolKind.displayName, icon: "lock.shield")
                 metaBlock(
-                    title: "模式",
-                    value: store.settings.connectionMode == .tun ? "TUN 全局" : "代理",
+                    title: L10n.t("sidebar.mode"),
+                    value: store.settings.connectionMode == .tun ? L10n.t("mode.tun_global") : L10n.t("mode.proxy"),
                     icon: "network"
                 )
                 metaBlock(
-                    title: "服务器",
+                    title: L10n.t("sidebar.server"),
                     value: "\(store.settings.serverAddress):\(store.settings.serverPort)",
                     icon: "server.rack"
                 )
 
                 if engine.phase == .connected {
                     if engine.activeMode == .tun {
-                        metaBlock(title: "通道", value: "虚拟网卡", icon: "network.badge.shield.half.filled")
+                        metaBlock(title: L10n.t("sidebar.channel"), value: L10n.t("sidebar.tun_iface"), icon: "network.badge.shield.half.filled")
                     } else {
                         VStack(alignment: .leading, spacing: 6) {
-                            Label("本地代理", systemImage: "point.3.connected.trianglepath.dotted")
+                            Label(L10n.t("sidebar.local_proxy"), systemImage: "point.3.connected.trianglepath.dotted")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                             Text("SOCKS  \(effectiveSocks)")
@@ -174,7 +182,7 @@ struct ContentView: View {
                     }
 
                     if store.settings.shareOnLAN, let lan = ProxyHelper.primaryLANAddress() {
-                        metaBlock(title: "局域网", value: lan, icon: "wifi.router")
+                        metaBlock(title: L10n.t("sidebar.lan"), value: lan, icon: "wifi.router")
                     }
                 }
             }
@@ -183,10 +191,10 @@ struct ContentView: View {
             Spacer(minLength: 8)
 
             VStack(spacing: 8) {
-                sidebarButton("运行日志", icon: "list.bullet.rectangle") { showLogs = true }
-                sidebarButton("分流规则", icon: "arrow.triangle.branch") { showRoutingRules = true }
-                sidebarButton("设置", icon: "gearshape") { showSettings = true }
-                sidebarButton("关于", icon: "info.circle") { showAbout = true }
+                sidebarButton(L10n.t("sidebar.logs"), icon: "list.bullet.rectangle") { showLogs = true }
+                sidebarButton(L10n.t("sidebar.routing"), icon: "arrow.triangle.branch") { showRoutingRules = true }
+                sidebarButton(L10n.t("sidebar.settings"), icon: "gearshape") { showSettings = true }
+                sidebarButton(L10n.t("sidebar.about"), icon: "info.circle") { showAbout = true }
             }
             .padding(16)
         }

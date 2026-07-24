@@ -10,14 +10,14 @@ struct CaptchaPanel: View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("人机验证")
+                    Text(L10n.t("captcha.title"))
                         .font(.system(.title2, design: .rounded).weight(.semibold))
-                    Text("在下方点选验证码字符。完成后会自动继续登录。")
+                    Text(L10n.t("captcha.hint"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("取消", role: .cancel) { engine.disconnect() }
+                Button(L10n.t("common.cancel"), role: .cancel) { engine.disconnect() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(18)
@@ -44,8 +44,8 @@ struct CaptchaPanel: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 160)
                             .onSubmit { engine.submitCaptcha() }
-                        Button("刷新") { engine.reloadCaptchaFromDisk() }
-                        Button("提交") { engine.submitCaptcha() }
+                        Button(L10n.t("captcha.refresh")) { engine.reloadCaptchaFromDisk() }
+                        Button(L10n.t("common.submit")) { engine.submitCaptcha() }
                             .buttonStyle(.borderedProminent)
                             .disabled(engine.captchaCode.isEmpty)
                     }

@@ -9,14 +9,14 @@ struct RoutingRulesView: View {
         VStack(spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("分流规则")
+                    Text(L10n.t("routing.title"))
                         .font(.title2.weight(.semibold))
-                    Text("白名单写入引擎；黑名单写入系统代理绕过列表")
+                    Text(L10n.t("routing.subtitle"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("完成") { dismiss() }
+                Button(L10n.t("common.done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
             .padding(20)
@@ -25,35 +25,35 @@ struct RoutingRulesView: View {
 
             Form {
                 Section {
-                    Text("强制走校园 VPN 的域名（zju-connect `custom_proxy_domain`）")
+                    Text(L10n.t("routing.allow_hint"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextEditor(text: $store.settings.proxyAllowList)
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 100, maxHeight: 160)
-                    Text("示例：science.org, nature.com 或每行一个")
+                    Text(L10n.t("routing.allow_example"))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 } header: {
-                    Text("白名单（强制代理）")
+                    Text(L10n.t("routing.allow_header"))
                 }
 
                 Section {
-                    Text("在系统代理中直连（不经本机 VPN 代理）的域名")
+                    Text(L10n.t("routing.deny_hint"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextEditor(text: $store.settings.proxyDenyList)
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 100, maxHeight: 160)
-                    Text("示例：localhost, music.163.com — 仅在开启「自动设置系统代理」时生效")
+                    Text(L10n.t("routing.deny_example"))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 } header: {
-                    Text("黑名单（直连绕过）")
+                    Text(L10n.t("routing.deny_header"))
                 }
 
                 Section {
-                    Text("修改后下次连接生效。已连接时请断开后重新连接以应用白名单。")
+                    Text(L10n.t("routing.note"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -25,19 +25,19 @@ struct OpenZwebApp: App {
         .defaultSize(width: 960, height: 760)
         .commands {
             CommandGroup(replacing: .newItem) {}
-            CommandMenu("连接") {
-                Button("断开连接") { engine.disconnect() }
+            CommandMenu(L10n.t("menu.connect")) {
+                Button(L10n.t("menu.disconnect")) { engine.disconnect() }
                     .keyboardShortcut("d", modifiers: [.command, .shift])
                     .disabled(engine.phase == .idle)
                 Divider()
-                Button("复制 SOCKS5 地址") {
+                Button(L10n.t("menu.copy_socks")) {
                     copy(store.settings.socksBind)
                 }
-                Button("复制 HTTP 代理地址") {
+                Button(L10n.t("menu.copy_http")) {
                     copy(store.settings.httpBind)
                 }
                 if store.settings.shareOnLAN {
-                    Button("复制局域网代理信息") {
+                    Button(L10n.t("menu.copy_lan")) {
                         copy(ProxyHelper.lanSharePayload(
                             socksBind: store.settings.socksBind,
                             httpBind: store.settings.httpBind
@@ -110,15 +110,15 @@ struct MenuBarMenu: View {
             }
 
             Divider()
-            Button("显示主窗口") { showMain() }
-            Button("检查更新") {
+            Button(L10n.t("menu.show_main")) { showMain() }
+            Button(L10n.t("menu.check_update")) {
                 Task { await updater.check(manual: true) }
             }
             if engine.phase == .connected {
-                Button("复制 SOCKS5") { copy(store.settings.socksBind) }
-                Button("复制 HTTP") { copy(store.settings.httpBind) }
+                Button(L10n.t("menu.copy_socks_short")) { copy(store.settings.socksBind) }
+                Button(L10n.t("menu.copy_http_short")) { copy(store.settings.httpBind) }
                 if store.settings.shareOnLAN {
-                    Button("复制局域网代理信息") {
+                    Button(L10n.t("menu.copy_lan")) {
                         copy(ProxyHelper.lanSharePayload(
                             socksBind: store.settings.socksBind,
                             httpBind: store.settings.httpBind
@@ -126,18 +126,18 @@ struct MenuBarMenu: View {
                     }
                 }
                 Divider()
-                Button("打开浙大导航 zjuers.com") {
+                Button(L10n.t("menu.open_nav")) {
                     if let url = URL(string: "https://zjuers.com/") {
                         NSWorkspace.shared.open(url)
                     }
                 }
-                Button("断开连接", role: .destructive) { engine.disconnect() }
+                Button(L10n.t("menu.disconnect"), role: .destructive) { engine.disconnect() }
             }
             Divider()
-            Toggle("系统代理自动管理", isOn: $store.settings.manageSystemProxy)
-            Toggle("局域网共享代理", isOn: $store.settings.shareOnLAN)
+            Toggle(L10n.t("menu.manage_proxy"), isOn: $store.settings.manageSystemProxy)
+            Toggle(L10n.t("menu.share_lan"), isOn: $store.settings.shareOnLAN)
             Divider()
-            Button("退出 OpenZweb") {
+            Button(L10n.t("menu.quit")) {
                 engine.disconnect()
                 NSApp.terminate(nil)
             }

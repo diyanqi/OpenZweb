@@ -20,10 +20,10 @@ final class NetworkMonitor: ObservableObject {
     @Published private(set) var publicIPLocation: String?
     @Published private(set) var campusIP: String?
     @Published private(set) var campusReachable: Bool?
-    @Published private(set) var lastCheckMessage: String = "尚未检测"
+    @Published private(set) var lastCheckMessage: String = L10n.t("net.not_checked")
     @Published private(set) var isChecking = false
     /// Disclaimer for third-party IP/geo lookups.
-    static let geoDisclaimer = "公网 IP 与归属地来自第三方 API，仅供参考，不代表真实物理位置。"
+    static var geoDisclaimer: String { L10n.t("connected.geo_disclaimer") }
 
     private var task: Task<Void, Never>?
     private var lastIn: UInt64 = 0
@@ -105,14 +105,16 @@ final class NetworkMonitor: ObservableObject {
         )
         campusReachable = campus
         if let publicIP {
-            var parts = ["公网 \(publicIP)"]
-            if let publicIPLocation, !publicIPLocation.isEmpty {
-                parts.append(publicIPLocation)
+            if campus == true {
+                lastCheckMessage = L10n.format("net.public_campus_ok", publicIP)
+            } else {
+                lastCheckMessage = L10n.format("net.public_campus_fail", publicIP)
             }
-            parts.append(campus == true ? "校内可达" : "校内探测失败")
-            lastCheckMessage = parts.joined(separator: " · ")
+            if let publicIPLocation, !publicIPLocation.isEmpty {
+                lastCheckMessage += " · " + publicIPLocation
+            }
         } else {
-            lastCheckMessage = campus == true ? "校内可达" : "网络探测失败"
+            lastCheckMessage = campus == true ? L10n.t("net.campus_ok") : L10n.t("net.fail")
         }
     }
 

@@ -7,14 +7,14 @@ struct LogView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("运行日志")
+                Text(L10n.t("logs.title"))
                     .font(.headline)
                 Spacer()
-                Button("复制全部") {
+                Button(L10n.t("logs.copy")) {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(engine.logs.joined(separator: "\n"), forType: .string)
                 }
-                Button("关闭") { dismiss() }
+                Button(L10n.t("common.close")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding()
