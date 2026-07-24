@@ -98,7 +98,7 @@ struct AppSettings: Codable, Equatable {
     /// Auto-check for new releases at launch.
     var checkUpdatesOnLaunch: Bool = true
     /// Default: check skip future secondary SMS (prefix $).
-    var preferSkipSecondaryAuth: Bool = false
+    var preferSkipSecondaryAuth: Bool = true
 
     // Legacy migration
     var dnsServer: String? = nil

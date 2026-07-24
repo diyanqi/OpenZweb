@@ -3,7 +3,7 @@
 set -euo pipefail
 
 APP=""
-VERSION="1.0.0"
+VERSION="1.0.6"
 OUT_DIR="dist"
 
 while [[ $# -gt 0 ]]; do

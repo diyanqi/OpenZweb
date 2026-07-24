@@ -9,7 +9,7 @@ struct OpenZwebApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("OpenZweb") {
+        WindowGroup(id: "main") {
             ContentView()
                 .environmentObject(engine)
                 .environmentObject(store)
@@ -17,6 +17,7 @@ struct OpenZwebApp: App {
                 .onAppear {
                     appDelegate.engine = engine
                     appDelegate.store = store
+                    appDelegate.applyDockVisibility(showDock: store.settings.showInDock)
                     LaunchAtLogin.isEnabled = store.settings.launchAtLogin
                     engine.refreshCoreBinary()
                     Task { await updater.checkOnLaunchIfNeeded(enabled: store.settings.checkUpdatesOnLaunch) }
@@ -79,15 +80,119 @@ struct OpenZwebApp: App {
     }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var engine: ConnectEngine?
     weak var store: SettingsStore?
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+    private var windowCloseObserver: NSObjectProtocol?
+    private var windowOpenObserver: NSObjectProtocol?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Closing the last window must NOT quit — keep menu bar agent alive.
+        // (Also implemented via applicationShouldTerminateAfterLastWindowClosed.)
+        windowCloseObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            // Ignore non-app panels / status items.
+            guard let window = note.object as? NSWindow else { return }
+            guard window.isVisible || window.isKeyWindow || window.isMainWindow else { return }
+            // Delay until after the window is actually gone from NSApp.windows.
+            DispatchQueue.main.async {
+                self.reconcileDockWithOpenWindows()
+            }
+        }
+        windowOpenObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reconcileDockWithOpenWindows()
+        }
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let windowCloseObserver {
+            NotificationCenter.default.removeObserver(windowCloseObserver)
+        }
+        if let windowOpenObserver {
+            NotificationCenter.default.removeObserver(windowOpenObserver)
+        }
         Task { @MainActor in
             engine?.disconnect()
+        }
+    }
+
+    /// Keep process alive when user closes the main window (menu bar stays).
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// Dock icon click while running as accessory / hidden main window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindow()
+        }
+        return true
+    }
+
+    /// Hide Dock when main window is gone; keep menu-bar process running.
+    func reconcileDockWithOpenWindows() {
+        let preferDock = store?.settings.showInDock ?? true
+        let hasMain = Self.hasVisibleMainWindow()
+        // Closed main window → always leave Dock (tray-only). Open window → honor setting.
+        applyDockVisibility(showDock: hasMain && preferDock)
+    }
+
+    func applyDockVisibility(showDock: Bool) {
+        let policy: NSApplication.ActivationPolicy = showDock ? .regular : .accessory
+        if NSApp.activationPolicy() != policy {
+            NSApp.setActivationPolicy(policy)
+        }
+    }
+
+    func showMainWindow() {
+        let preferDock = store?.settings.showInDock ?? true
+        // Need .regular briefly so windows can become key, even if user hides Dock later.
+        applyDockVisibility(showDock: true) // temporary .regular so window can key
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let window = Self.mainWindows().first {
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            applyDockVisibility(showDock: preferDock)
+            return
+        }
+
+        // Fallback: reopen own bundle to recreate WindowGroup if all windows were destroyed.
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, _ in
+            DispatchQueue.main.async {
+                Self.mainWindows().first?.makeKeyAndOrderFront(nil)
+                self.applyDockVisibility(showDock: preferDock)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            Self.mainWindows().first?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            self.applyDockVisibility(showDock: preferDock)
+        }
+    }
+
+    private static func hasVisibleMainWindow() -> Bool {
+        mainWindows().contains { $0.isVisible && !$0.isMiniaturized }
+    }
+
+    private static func mainWindows() -> [NSWindow] {
+        NSApp.windows.filter { window in
+            // Exclude status-item / menu-bar-extra chrome and closed panels.
+            guard window.canBecomeMain || window.canBecomeKey else { return false }
+            let className = String(describing: type(of: window))
+            if className.contains("StatusBar") || className.contains("MenuBar") { return false }
+            // Settings window is ok to count as UI, but dock hide only when NOTHING left.
+            return true
         }
     }
 }
@@ -96,6 +201,7 @@ struct MenuBarMenu: View {
     @EnvironmentObject private var engine: ConnectEngine
     @EnvironmentObject private var store: SettingsStore
     @EnvironmentObject private var updater: UpdateChecker
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -145,8 +251,15 @@ struct MenuBarMenu: View {
     }
 
     private func showMain() {
+        if let delegate = NSApp.delegate as? AppDelegate {
+            // Prefer AppDelegate path (restores Dock + focuses/opens window).
+            openWindow(id: "main")
+            delegate.showMainWindow()
+            return
+        }
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        openWindow(id: "main")
     }
 
     private func copy(_ s: String) {

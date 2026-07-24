@@ -16,7 +16,10 @@ struct RoutingRulesView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(L10n.t("common.done")) { dismiss() }
+                Button(L10n.t("common.done")) {
+                    store.persist()
+                    dismiss()
+                }
                     .keyboardShortcut(.defaultAction)
             }
             .padding(20)
@@ -63,5 +66,6 @@ struct RoutingRulesView: View {
             .padding(.bottom, 12)
         }
         .frame(minWidth: 520, minHeight: 480)
+        .onDisappear { store.persist() }
     }
 }

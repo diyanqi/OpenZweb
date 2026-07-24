@@ -64,6 +64,18 @@ struct SettingsView: View {
                         .onChange(of: store.settings.launchAtLogin) { _, v in
                             LaunchAtLogin.isEnabled = v
                         }
+                    Toggle(L10n.t("settings.show_dock"), isOn: $store.settings.showInDock)
+                        .onChange(of: store.settings.showInDock) { _, v in
+                            if let delegate = NSApp.delegate as? AppDelegate {
+                                // If main window is open, apply immediately; if tray-only, stay accessory.
+                                delegate.reconcileDockWithOpenWindows()
+                            } else {
+                                NSApp.setActivationPolicy(v ? .regular : .accessory)
+                            }
+                        }
+                    Text(L10n.t("settings.show_dock_hint"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Toggle(L10n.t("settings.check_updates_launch"), isOn: $store.settings.checkUpdatesOnLaunch)
                 }
 

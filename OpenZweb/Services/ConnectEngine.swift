@@ -338,8 +338,19 @@ final class ConnectEngine: ObservableObject {
             writeLine(code)
             if shouldSkip {
                 appendLog("[OpenZweb] " + L10n.t("log.sms_sent_skip"))
+                // Persist "skip future secondary SMS" preference.
+                if var s = lastSettings {
+                    s.preferSkipSecondaryAuth = true
+                    lastSettings = s
+                    s.save()
+                }
             } else {
                 appendLog("[OpenZweb] " + L10n.t("log.sms_sent"))
+                if var s = lastSettings {
+                    s.preferSkipSecondaryAuth = false
+                    lastSettings = s
+                    s.save()
+                }
             }
             // After OTP the engine may open SOCKS/HTTP without a clear log line.
             passwordAuthSucceeded = true
@@ -403,10 +414,18 @@ final class ConnectEngine: ObservableObject {
         // Do NOT pass -auto-detect-interface: older zju-connect builds treat it as
         // fatal ("flag provided but not defined") and dump -h usage text, which used
         // to be mis-detected as "connected". Prefer config-only / default routing.
-        process.arguments = [
+        var args = [
             "-config", configURL.path,
             "-graph-code-file", CoreBinaryManager.captchaImageURL.path
         ]
+        // Belt-and-suspenders: also pass CLI string form (comma-separated).
+        if let settings = lastSettings {
+            let domains = Self.expandedProxyDomains(settings.proxyAllowDomains)
+            if !domains.isEmpty {
+                args += ["-custom-proxy-domain", domains.joined(separator: ",")]
+            }
+        }
+        process.arguments = args
         process.environment = Self.sanitizedProcessEnvironment()
 
         let stdin = Pipe()
@@ -457,8 +476,15 @@ final class ConnectEngine: ObservableObject {
         let logFile = CoreBinaryManager.supportDirectory.appendingPathComponent("engine.log")
         try? "".write(to: logFile, atomically: true, encoding: .utf8)
 
+        var extraFlags = ""
+        if let settings = lastSettings {
+            let domains = Self.expandedProxyDomains(settings.proxyAllowDomains)
+            if !domains.isEmpty {
+                extraFlags = " -custom-proxy-domain \(shellQuote(domains.joined(separator: ",")))"
+            }
+        }
         let cmd = """
-        \(shellQuote(binary.path)) -config \(shellQuote(configURL.path)) -graph-code-file \(shellQuote(CoreBinaryManager.captchaImageURL.path)) < \(shellQuote(fifo.path)) > \(shellQuote(logFile.path)) 2>&1 &
+        \(shellQuote(binary.path)) -config \(shellQuote(configURL.path)) -graph-code-file \(shellQuote(CoreBinaryManager.captchaImageURL.path))\(extraFlags) < \(shellQuote(fifo.path)) > \(shellQuote(logFile.path)) 2>&1 &
         echo $!
         """
         let script = "do shell script \(appleScriptString(cmd)) with administrator privileges"
@@ -574,16 +600,22 @@ final class ConnectEngine: ObservableObject {
             "fake_ip = \(settings.fakeIP)",
             "tcp_tunnel_mode = \(settings.tcpTunnelMode)"
         ]
-        let allowDomains = settings.proxyAllowDomains
-        if !allowDomains.isEmpty {
+        // Force-through-RVPN domains (zju-connect custom_proxy_domain).
+        // Expand bare domains with www. variant so common hostnames match.
+        let allowDomains = Self.expandedProxyDomains(settings.proxyAllowDomains)
+        if allowDomains.isEmpty {
+            appendLog("[OpenZweb] 代理白名单: （空）— 仅校内/服务器资源走 VPN，外网域名默认 DIRECT")
+        } else {
             // Go type is []string — must be a TOML array, not a comma-separated string.
             let arr = allowDomains.map { q($0) }.joined(separator: ", ")
             lines.append("custom_proxy_domain = [\(arr)]")
-            appendLog("[OpenZweb] 代理白名单: \(allowDomains.joined(separator: ", "))")
+            appendLog("[OpenZweb] 代理白名单(custom_proxy_domain): \(allowDomains.joined(separator: ", "))")
         }
         let denyDomains = settings.proxyDenyDomains
-        if !denyDomains.isEmpty {
-            appendLog("[OpenZweb] 代理黑名单(PAC/系统分流): \(denyDomains.joined(separator: ", "))")
+        if denyDomains.isEmpty {
+            appendLog("[OpenZweb] 代理黑名单: （空）")
+        } else {
+            appendLog("[OpenZweb] 代理黑名单(系统代理绕过): \(denyDomains.joined(separator: ", "))")
         }
         // TUN: optional local DNS forwarder (port 53 usually needs privileges).
         if settings.tunMode, settings.manageSystemDNS {
@@ -713,6 +745,14 @@ final class ConnectEngine: ObservableObject {
             }
         }
 
+        // EZ4Connect / zju-connect tip line appears right before secondary SMS prompt.
+        if lower.contains("add prefix") && lower.contains("$") && lower.contains("skip secondary") {
+            smsAllowsSkipSecondary = true
+            // Default ON (preferSkipSecondaryAuth defaults true); user can uncheck.
+            skipSecondaryAuth = lastSettings?.preferSkipSecondaryAuth ?? true
+            appendLog("[OpenZweb] 检测到可跳过二次短信验证（提交时在验证码前加 $，仅跳过以后的短信）")
+        }
+
         // Prompt for SMS input — only real stdin prompts, not "SMS message sent" notices.
         if !Self.looksLikeSMSFailure(lower), let kind = Self.smsPromptKind(lower) {
             holdSMSSheet = true
@@ -720,10 +760,14 @@ final class ConnectEngine: ObservableObject {
             captchaImage = nil
             phase = .waitingSMS
             // EZ4Connect: only secondary SMS prompt shows skip option.
-            smsAllowsSkipSecondary = (kind == .secondary)
-            if smsAllowsSkipSecondary {
-                skipSecondaryAuth = lastSettings?.preferSkipSecondaryAuth ?? skipSecondaryAuth
+            // "Please enter the SMS verification code:" → secondary (show skip)
+            // "Please enter your SMS code:" → primary SMS login (no skip)
+            if kind == .secondary {
+                smsAllowsSkipSecondary = true
+                // Prefer last choice; default true when tip already seen / first time.
+                skipSecondaryAuth = lastSettings?.preferSkipSecondaryAuth ?? true
             } else {
+                smsAllowsSkipSecondary = false
                 skipSecondaryAuth = false
             }
             if let pending = pendingSMSCode, !pending.isEmpty {
@@ -1029,6 +1073,31 @@ final class ConnectEngine: ObservableObject {
             }
         }
         return false
+    }
+
+    /// Normalize + expand allow-list domains for zju-connect matching.
+    /// Bare "google.com" also yields "www.google.com"; wildcards stripped to suffix form.
+    private static func expandedProxyDomains(_ raw: [String]) -> [String] {
+        var out: [String] = []
+        var seen = Set<String>()
+        func add(_ d: String) {
+            let t = d.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !t.isEmpty, !seen.contains(t) else { return }
+            seen.insert(t)
+            out.append(t)
+        }
+        for item in raw {
+            var d = item.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if d.hasPrefix("*.") { d = String(d.dropFirst(2)) }
+            if d.hasPrefix(".") { d = String(d.dropFirst()) }
+            guard !d.isEmpty else { continue }
+            add(d)
+            // Common host prefix — many sites only hit www.*
+            if !d.hasPrefix("www.") {
+                add("www." + d)
+            }
+        }
+        return out
     }
 
     /// Fatal CLI / config errors that must fail the session (not mere help lines).

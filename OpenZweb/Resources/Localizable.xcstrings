@@ -3297,19 +3297,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Domains forced through campus VPN (zju-connect custom_proxy_domain)"
+            "value": "Domains forced through campus VPN (even if not in school resource list). One per line."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "强制走校园 VPN 的域名（zju-connect `custom_proxy_domain`）"
+            "value": "强制走校园 VPN 的域名（即使不在学校资源列表）。每行一个。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "強制走校園 VPN 的網域（zju-connect `custom_proxy_domain`）"
+            "value": "強制走校園 VPN 的網域（即使不在學校資源列表）。每行一個。"
           }
         }
       }
@@ -3412,19 +3412,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Changes apply on the next connect. If already connected, disconnect and reconnect to apply the allowlist."
+            "value": "Allow-list is written into zju-connect as custom_proxy_domain (force RVPN). Reconnect after editing. Deny-list is applied as system proxy bypass. Wildcards like *.google.com are normalized to google.com (+ www.)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "修改后下次连接生效。已连接时请断开后重新连接以应用白名单。"
+            "value": "白名单写入 zju-connect 的 custom_proxy_domain（强制走 VPN）。修改后需重新连接才生效。黑名单写入系统代理绕过列表。*.google.com 会规范为 google.com（并自动加 www.）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "修改後下次連線生效。已連線時請中斷後重新連線以套用白名單。"
+            "value": "白名單寫入 zju-connect 的 custom_proxy_domain（強制走 VPN）。修改後需重新連線才生效。黑名單寫入系統代理略過清單。*.google.com 會規範為 google.com（並自動加 www.）。"
           }
         }
       }
@@ -5012,6 +5012,75 @@
           "stringUnit": {
             "state": "translated",
             "value": "要用統一身分認證連內網：在主介面認證方式選「統一身分認證 (CAS)」，再點「連線內網」，由協定引擎完成 CAS 流程。"
+          }
+        }
+      }
+    },
+    "sms.skip_secondary_hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You still enter the code this time. With this checked, a \"$\" prefix asks the server to skip secondary SMS next time (EZ4Connect). Server may refuse."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本次仍须输入验证码。勾选后提交时会加 $ 前缀，请求服务器下次跳过二次短信（与 EZ4Connect 相同）。服务端可能拒绝。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本次仍須輸入驗證碼。勾選後提交時會加 $ 前綴，請求伺服器下次略過二次簡訊（與 EZ4Connect 相同）。伺服器可能拒絕。"
+          }
+        }
+      }
+    },
+    "settings.show_dock": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show in Dock when window is open"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗口打开时显示在程序坞"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "視窗開啟時顯示在程式塢"
+          }
+        }
+      }
+    },
+    "settings.show_dock_hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Closing the main window hides the Dock icon and keeps OpenZweb running in the menu bar. Quit only from the tray menu."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭主窗口后程序坞图标会隐藏，应用继续在菜单栏托盘运行。请从托盘菜单选择退出。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關閉主視窗後程式塢圖示會隱藏，應用繼續在選單列托盤執行。請從托盤選單選擇結束。"
           }
         }
       }

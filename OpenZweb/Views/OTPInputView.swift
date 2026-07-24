@@ -147,11 +147,17 @@ struct SMSOTPSheet: View {
             }
 
             if engine.smsAllowsSkipSecondary {
-                Toggle(L10n.t("sms.skip_secondary"), isOn: $engine.skipSecondaryAuth)
-                    .toggleStyle(.checkbox)
-                    .font(.callout)
-                    .disabled(engine.isSubmittingSMS)
-                    .help("与 EZ4Connect 相同：验证码前加 $，请求跳过后续二次短信。服务端不一定允许。")
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle(L10n.t("sms.skip_secondary"), isOn: $engine.skipSecondaryAuth)
+                        .toggleStyle(.checkbox)
+                        .font(.callout)
+                        .disabled(engine.isSubmittingSMS)
+                    Text(L10n.t("sms.skip_secondary_hint"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: 320, alignment: .leading)
             }
 
             if let smsError = engine.smsError {
