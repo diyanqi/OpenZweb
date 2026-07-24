@@ -116,22 +116,20 @@ final class ConnectEngine: ObservableObject {
     }
 
     /// Apply allow/deny lists while keeping the session when possible.
-    /// - PAC / system bypass: true hot-apply (no re-auth) for proxy mode.
+    /// - System proxy: always global HTTP/HTTPS/SOCKS; deny list → bypass (hot-apply, no re-auth).
     /// - Engine force-VPN domains (`custom_proxy_domain`): soft-restart when the domain set changed.
     func hotApplyRoutingRules(_ settings: AppSettings) {
         lastSettings = settings
         settings.save()
         isApplyingRouting = true
         let deny = settings.proxyDenyDomains
-        let pacAllow = Self.pacRouteEntries(settings.proxyAllowDomains)
         let engineDomains = Self.engineForceProxyDomains(settings.proxyAllowDomains)
         let skippedIPs = settings.proxyAllowDomains.filter { AppSettings.isIPAddress($0) }
-        appendLog("[OpenZweb] 热更新分流：PAC/白名单 \(pacAllow.isEmpty ? "（空）→ 全局系统代理" : pacAllow.joined(separator: ", "))")
+        appendLog("[OpenZweb] 热更新分流：系统代理始终全局；黑名单绕过 \(deny.isEmpty ? "（空）" : deny.joined(separator: ", "))")
         appendLog("[OpenZweb] 热更新分流：引擎强制 VPN 域名 \(engineDomains.isEmpty ? "（空）" : engineDomains.joined(separator: ", "))")
         if !skippedIPs.isEmpty {
-            appendLog("[OpenZweb] 提示：IP \(skippedIPs.joined(separator: ", ")) 不能写入引擎 custom_proxy_domain（会直接导致启动失败）；已仅用于 PAC 匹配")
+            appendLog("[OpenZweb] 提示：IP \(skippedIPs.joined(separator: ", ")) 不能写入引擎 custom_proxy_domain（会直接导致启动失败），已忽略")
         }
-        appendLog("[OpenZweb] 热更新分流：黑名单 \(deny.isEmpty ? "（空）" : deny.joined(separator: ", "))")
 
         let socksBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.socksBind) : settings.socksBind
         let httpBind = settings.shareOnLAN ? ProxyHelper.lanBind(from: settings.httpBind) : settings.httpBind
@@ -147,27 +145,23 @@ final class ConnectEngine: ObservableObject {
             && Set(engineDomains) != Set(lastEngineForceDomains)
 
         Task.detached(priority: .userInitiated) { [weak self] in
-            // Proxy mode: update PAC first.
+            // Proxy mode: hot-apply global system proxy + deny bypass.
             if manageProxy, phaseNow == .connected, let engine = self {
                 let tun = await MainActor.run { engine.activeMode == .tun }
                 if !tun {
                     do {
-                        let pac = try SystemProxyManager.hotApplyRouting(
+                        _ = try SystemProxyManager.hotApplyRouting(
                             httpBind: http,
                             socksBind: socks,
-                            allowDomains: pacAllow,
+                            allowDomains: [],
                             denyDomains: deny
                         )
                         await MainActor.run {
-                            if let pac {
-                                engine.appendLog("[OpenZweb] 分流已热更新：PAC 模式（域名/IP 白名单走本地代理）→ \(pac.path)")
-                            } else {
-                                engine.appendLog("[OpenZweb] 分流已热更新：全局系统代理 + 黑名单绕过")
-                            }
+                            engine.appendLog("[OpenZweb] 分流已热更新：全局系统代理 + 黑名单绕过")
                         }
                     } catch {
                         await MainActor.run {
-                            engine.appendLog("[OpenZweb] PAC 热更新失败：\(error.localizedDescription)")
+                            engine.appendLog("[OpenZweb] 系统代理热更新失败：\(error.localizedDescription)")
                         }
                     }
                 }
@@ -551,6 +545,8 @@ final class ConnectEngine: ObservableObject {
     func reloadCaptchaFromDisk() {
         // After click-captcha is done, residual graph-code files must not reopen captcha UI.
         guard !captchaSatisfied else { return }
+        // aTrust web captcha takes priority — never flash the legacy graph-code UI over it.
+        if captchaServerURL != nil { return }
         // Only surface disk captcha while we are still early in login, never after SMS/connected.
         switch phase {
         case .preparing, .authenticating, .waitingCaptcha:
@@ -565,6 +561,7 @@ final class ConnectEngine: ObservableObject {
         // Prefer explicit captcha-server logs for aTrust; only fall back to image UI if no server URL.
         if captchaServerURL == nil, phase != .waitingCaptcha {
             phase = .waitingCaptcha
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
@@ -671,7 +668,16 @@ final class ConnectEngine: ObservableObject {
                 appendLog("[OpenZweb] 已忽略 IP 白名单项（引擎不支持，会导致 TUN 启动失败）：\(ips.joined(separator: ", "))")
             }
         }
+        // Inject no-op `open` + BROWSER so elevated root zju-connect cannot launch Safari.
+        // (Non-TUN uses Process.environment; osascript admin shell does not inherit it.)
+        let stubOpen = Self.stubOpenPath()
+        let stubDir = URL(fileURLWithPath: stubOpen).deletingLastPathComponent().path
         let cmd = """
+        export PATH=\(shellQuote(stubDir)):\"${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}\"
+        export BROWSER=\(shellQuote(stubOpen))
+        unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY all_proxy ALL_PROXY socks_proxy SOCKS_PROXY ftp_proxy FTP_PROXY
+        export NO_PROXY='*'
+        export no_proxy='*'
         \(shellQuote(binary.path)) -config \(shellQuote(configURL.path)) -graph-code-file \(shellQuote(CoreBinaryManager.captchaImageURL.path))\(extraFlags) < \(shellQuote(fifo.path)) > \(shellQuote(logFile.path)) 2>&1 &
         echo $!
         """
@@ -841,7 +847,7 @@ final class ConnectEngine: ObservableObject {
             appendLog("[OpenZweb] 代理白名单(custom_proxy_domain): \(allowDomains.joined(separator: ", "))")
         }
         if !allowIPs.isEmpty {
-            appendLog("[OpenZweb] PAC 可用 IP（不写引擎）: \(allowIPs.joined(separator: ", "))")
+            appendLog("[OpenZweb] 已忽略白名单中的 IP（引擎 custom_proxy_domain 仅支持域名）: \(allowIPs.joined(separator: ", "))")
         }
         let denyDomains = settings.proxyDenyDomains
         if denyDomains.isEmpty {
@@ -931,23 +937,12 @@ final class ConnectEngine: ObservableObject {
         let lower = trimmed.lowercased()
 
         // aTrust click-captcha: local HTTP page (not a simple text code).
-        if lower.contains("captcha server started at") {
+        // Also catch "Failed to open browser: … Please visit: http://…" (when stub open suppresses Safari).
+        let isCaptchaServerLine = lower.contains("captcha server started at")
+        let isPleaseVisitCaptcha = lower.contains("please visit:") && (lower.contains("captcha") || lower.contains("127.0.0.1") || lower.contains("localhost"))
+        if isCaptchaServerLine || isPleaseVisitCaptcha {
             if let url = Self.extractHTTPURL(from: trimmed) {
-                let key = url.absoluteString
-                // Only first time for this URL / attempt — prevent re-opening captcha after user finished.
-                if !captchaSatisfied,
-                   lastCaptchaServerURLString != key,
-                   phase != .connected,
-                   phase != .waitingSMS,
-                   !holdSMSSheet {
-                    lastCaptchaServerURLString = key
-                    captchaServerURL = url
-                    holdSMSSheet = false
-                    phase = .waitingCaptcha
-                    appendLog("[OpenZweb] " + L10n.t("log.captcha_open"))
-                } else {
-                    captchaServerURL = url
-                }
+                presentInAppCaptcha(url: url, logOpen: isCaptchaServerLine || lastCaptchaServerURLString == nil)
             }
         }
 
@@ -964,8 +959,9 @@ final class ConnectEngine: ObservableObject {
         }
 
         // Legacy EasyConnect image captcha only — never re-open aTrust after click captcha done,
-        // and never steal focus from SMS / connected phases.
+        // and never steal focus from SMS / connected phases / web captcha.
         if !captchaSatisfied,
+           captchaServerURL == nil,
            phase != .waitingSMS,
            phase != .connected,
            !holdSMSSheet,
@@ -974,6 +970,7 @@ final class ConnectEngine: ObservableObject {
             reloadCaptchaFromDisk()
             if captchaImage != nil, captchaServerURL == nil {
                 phase = .waitingCaptcha
+                NSApp.activate(ignoringOtherApps: true)
             }
         }
 
@@ -1113,10 +1110,9 @@ final class ConnectEngine: ObservableObject {
         if manageProxy || manageDNS {
             appendLog("[OpenZweb] " + L10n.t("log.proxy_applying"))
             if manageProxy {
-                if allowDomains.isEmpty {
-                    appendLog("[OpenZweb] 系统代理：全局 HTTP/HTTPS/SOCKS（白名单为空）")
-                } else {
-                    appendLog("[OpenZweb] 系统代理：PAC 分流（仅白名单域名走代理）：\(allowDomains.joined(separator: ", "))")
+                appendLog("[OpenZweb] 系统代理：全局 HTTP/HTTPS/SOCKS → 本机（浏览器全部走本地代理，由引擎决定 VPN/直连）")
+                if !allowDomains.isEmpty {
+                    appendLog("[OpenZweb] 引擎强制 VPN 域名（custom_proxy_domain）：\(allowDomains.joined(separator: ", "))")
                 }
             }
             if manageDNS {
@@ -1143,11 +1139,8 @@ final class ConnectEngine: ObservableObject {
                 await MainActor.run {
                     engine.systemProxyManaged = manageProxy
                     if manageProxy {
-                        if allowDomains.isEmpty {
-                            engine.appendLog("[OpenZweb] " + L10n.format("log.proxy_set", http, socks))
-                        } else {
-                            engine.appendLog("[OpenZweb] 已启用 PAC 分流 → HTTP \(http) · SOCKS \(socks)")
-                        }
+                        engine.appendLog("[OpenZweb] " + L10n.format("log.proxy_set", http, socks))
+                        engine.appendLog("[OpenZweb] 已启用全局系统代理（非 PAC）")
                     }
                     if manageDNS, let dnsForSystem {
                         engine.appendLog("[OpenZweb] 已设置系统 DNS → \(dnsForSystem.joined(separator: ", "))")
@@ -1223,6 +1216,37 @@ final class ConnectEngine: ObservableObject {
             return path
         }
         return "/usr/bin/true"
+    }
+
+
+    /// Show aTrust captcha only in-app (never open system browser).
+    /// If already waiting, only refresh the URL to avoid double-panel flicker.
+    private func presentInAppCaptcha(url: URL, logOpen: Bool) {
+        guard !captchaSatisfied else {
+            captchaServerURL = url
+            return
+        }
+        guard phase != .connected, phase != .waitingSMS, !holdSMSSheet else {
+            captchaServerURL = url
+            return
+        }
+        let key = url.absoluteString
+        captchaServerURL = url
+        captchaImage = nil // web captcha supersedes graph-code
+        holdSMSSheet = false
+        if phase != .waitingCaptcha {
+            phase = .waitingCaptcha
+            if logOpen {
+                appendLog("[OpenZweb] " + L10n.t("log.captcha_open"))
+            }
+            NSApp.activate(ignoringOtherApps: true)
+        } else if lastCaptchaServerURLString != key {
+            // Same panel, new URL — reload WebView only
+            if logOpen {
+                appendLog("[OpenZweb] 验证码页面已更新")
+            }
+        }
+        lastCaptchaServerURLString = key
     }
 
     private static func extractHTTPURL(from line: String) -> URL? {

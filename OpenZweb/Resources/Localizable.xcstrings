@@ -3297,19 +3297,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Allow list: domains force RVPN (engine) and/or enter OpenZweb via PAC. Domains only for the engine — IP literals are for PAC matching only (IPs crash the engine if passed as domains). Leave empty = all traffic uses system proxy; campus resources still VPN."
+            "value": "Allow list: domains forced through RVPN by the engine (custom_proxy_domain). Domains only — IP literals are ignored (they crash the engine). Leave empty = engine uses server resource rules; system proxy is always global when managed."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "白名单：域名会写入引擎强制走 VPN，并用于 PAC 分流。引擎只接受域名；IP 仅用于 PAC 匹配（传给引擎会导致启动失败）。留空 = 全部流量走系统代理，校内资源仍走 VPN。支持 *.example.com。"
+            "value": "白名单：仅写入引擎强制走 VPN 的域名（custom_proxy_domain）。只接受域名，IP 会被忽略（传给引擎会导致启动失败）。留空 = 由引擎服务器资源规则决定；开启「自动设置系统代理」时系统代理始终为全局（全部流量进本地代理，校内内网也可访问）。支持 *.example.com。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "白名單：網域會寫入引擎強制走 VPN，並用於 PAC 分流。引擎只接受網域；IP 僅用於 PAC 匹配（傳給引擎會導致啟動失敗）。留空 = 全部流量走系統代理，校內資源仍走 VPN。支援 *.example.com。"
+            "value": "白名單：僅寫入引擎強制走 VPN 的網域（custom_proxy_domain）。只接受網域，IP 會被忽略（傳給引擎會導致啟動失敗）。留空 = 由引擎伺服器資源規則決定；開啟「自動設定系統代理」時系統代理始終為全域（全部流量進本機代理，校內內網也可存取）。支援 *.example.com。"
           }
         }
       }
@@ -3366,19 +3366,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Deny list: always DIRECT (system proxy bypass / PAC). Useful for local LAN and tools that must not use the VPN proxy."
+            "value": "Deny list: always DIRECT (system proxy bypass). Useful for local LAN and tools that must not use the VPN proxy."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "黑名单：始终直连（系统代理绕过 / PAC）。适合本机、局域网或不想走 VPN 的工具。"
+            "value": "黑名单：始终直连（系统代理绕过）。适合本机、局域网或不想走 VPN 的工具。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "黑名單：始終直連（系統代理繞過 / PAC）。適合本機、區域網或不想走 VPN 的工具。"
+            "value": "黑名單：始終直連（系統代理繞過）。適合本機、區域網或不想走 VPN 的工具。"
           }
         }
       }
@@ -3412,19 +3412,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tip: engine matches domains (SNI/host), not bare IPs. Use real hostnames like scholar.edu.cn. Empty allow list = global system proxy + server resource rules."
+            "value": "Tip: system proxy is global (not PAC). Engine matches domains (SNI/host), not bare IPs. Empty allow list = global system proxy + server resource rules."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "提示：引擎按域名（不是裸 IP）强制代理。请填写 scholar.edu.cn 这类域名。白名单为空 = 全局系统代理 + 服务器资源规则。"
+            "value": "提示：系统代理为全局模式（不再使用 PAC 分流）。引擎按域名（不是裸 IP）强制代理。白名单为空 = 全局系统代理 + 服务器资源规则。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "提示：引擎按網域（不是裸 IP）強制代理。請填寫 scholar.edu.cn 這類網域。白名單為空 = 全域系統代理 + 伺服器資源規則。"
+            "value": "提示：系統代理為全域模式（不再使用 PAC 分流）。引擎按網域（不是裸 IP）強制代理。白名單為空 = 全域系統代理 + 伺服器資源規則。"
           }
         }
       }
@@ -5229,19 +5229,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "While connected: PAC updates immediately. Changing force-VPN domains soft-restarts the engine (may require SMS again)."
+            "value": "While connected: system proxy + deny bypass update immediately. Changing force-VPN domains soft-restarts the engine (may require SMS again)."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已连接时：PAC 立即生效；若强制 VPN 域名有变化会软重启引擎（可能需重新短信验证）。"
+            "value": "已连接时：系统代理与黑名单绕过立即生效；若强制 VPN 域名有变化会软重启引擎（可能需重新短信验证）。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已連線時：PAC 立即生效；若強制 VPN 網域有變化會軟重啟引擎（可能需重新簡訊驗證）。"
+            "value": "已連線時：系統代理與黑名單繞過立即生效；若強制 VPN 網域有變化會軟重啟引擎（可能需重新簡訊驗證）。"
           }
         }
       }

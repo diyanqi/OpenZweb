@@ -344,9 +344,10 @@ enum SystemProxyManager {
         try runBatchScript(scriptLines.joined(separator: "\n"))
     }
 
-    /// Rewrite PAC + system proxy routing while connected (no engine restart).
-    /// - Non-empty allow list → PAC (only listed hosts use local proxy)
-    /// - Empty allow list → global manual HTTP/HTTPS/SOCKS
+    /// Hot-update system proxy while connected.
+    /// Always uses **global** HTTP/HTTPS/SOCKS (no PAC).
+    /// Allow-list is engine-side only; `denyDomains` become system proxy bypass.
+    /// Returns nil (legacy PAC URL return kept for call-site compatibility).
     @discardableResult
     static func hotApplyRouting(
         httpBind: String,
@@ -354,59 +355,43 @@ enum SystemProxyManager {
         allowDomains: [String],
         denyDomains: [String]
     ) throws -> URL? {
+        _ = allowDomains // engine force-VPN list is applied separately by ConnectEngine
         guard let http = Endpoint.parse(httpBind), let socks = Endpoint.parse(socksBind) else {
             throw ProxyError.invalidBind
         }
+        // Browsers must talk to loopback, never 0.0.0.0 from LAN-share binds.
+        let httpHost = (http.host == "0.0.0.0" || http.host == "::" || http.host.isEmpty) ? "127.0.0.1" : http.host
+        let socksHost = (socks.host == "0.0.0.0" || socks.host == "::" || socks.host.isEmpty) ? "127.0.0.1" : socks.host
         let services = try listNetworkServices(readOnly: true)
-        let httpProxy = "\(http.host):\(http.port)"
-        let socksProxy = "\(socks.host):\(socks.port)"
-        let pacFile = try ProxyHelper.savePAC(
-            httpProxy: httpProxy,
-            socksProxy: socksProxy,
-            allowList: allowDomains,
-            denyList: denyDomains
-        )
         var scriptLines: [String] = ["set -e"]
         var bypassParts = ["127.0.0.1", "localhost", "*.local", "vpn.zju.edu.cn", "zjuam.zju.edu.cn"]
         for d in denyDomains where !d.isEmpty {
             if !bypassParts.contains(d) { bypassParts.append(d) }
         }
         let bypass = bypassParts.joined(separator: " ")
-        let usePAC = !allowDomains.isEmpty
-        let pacURL = pacFile.absoluteString
         for service in services {
             let s = shellQuote(service)
-            if usePAC {
-                scriptLines += [
-                    "/usr/sbin/networksetup -setwebproxystate \(s) off",
-                    "/usr/sbin/networksetup -setsecurewebproxystate \(s) off",
-                    "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) off",
-                    "/usr/sbin/networksetup -setautoproxyurl \(s) \(shellQuote(pacURL))",
-                    "/usr/sbin/networksetup -setautoproxystate \(s) on",
-                    "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
-                ]
-            } else {
-                scriptLines += [
-                    "/usr/sbin/networksetup -setautoproxystate \(s) off",
-                    "/usr/sbin/networksetup -setwebproxy \(s) \(shellQuote(http.host)) \(http.port)",
-                    "/usr/sbin/networksetup -setwebproxystate \(s) on",
-                    "/usr/sbin/networksetup -setsecurewebproxy \(s) \(shellQuote(http.host)) \(http.port)",
-                    "/usr/sbin/networksetup -setsecurewebproxystate \(s) on",
-                    "/usr/sbin/networksetup -setsocksfirewallproxy \(s) \(shellQuote(socks.host)) \(socks.port)",
-                    "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) on",
-                    "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
-                ]
-            }
+            scriptLines += [
+                "/usr/sbin/networksetup -setautoproxystate \(s) off",
+                "/usr/sbin/networksetup -setwebproxy \(s) \(shellQuote(httpHost)) \(http.port)",
+                "/usr/sbin/networksetup -setwebproxystate \(s) on",
+                "/usr/sbin/networksetup -setsecurewebproxy \(s) \(shellQuote(httpHost)) \(http.port)",
+                "/usr/sbin/networksetup -setsecurewebproxystate \(s) on",
+                "/usr/sbin/networksetup -setsocksfirewallproxy \(s) \(shellQuote(socksHost)) \(socks.port)",
+                "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) on",
+                "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
+            ]
         }
         try runBatchScript(scriptLines.joined(separator: "\n"))
         UserDefaults.standard.set(true, forKey: appliedKey)
-        UserDefaults.standard.set(usePAC, forKey: "openzweb.systemProxy.pacMode")
-        return usePAC ? pacFile : nil
+        UserDefaults.standard.set(false, forKey: "openzweb.systemProxy.pacMode")
+        return nil
     }
 
     /// Apply proxy + optional DNS in **one** background-friendly batch (single admin prompt max).
     /// Must NOT be called on the main thread for long; prefer `Task.detached`.
-    /// When `allowDomains` is non-empty, installs a PAC so only those hosts use OpenZweb.
+    /// System proxy is always **global** HTTP/HTTPS/SOCKS; allow-list is ignored here
+    /// (enforced inside zju-connect via custom_proxy_domain). Deny → bypass domains.
     static func applyProxyAndDNS(
         httpBind: String,
         socksBind: String,
@@ -420,6 +405,10 @@ enum SystemProxyManager {
         guard let http = Endpoint.parse(httpBind), let socks = Endpoint.parse(socksBind) else {
             throw ProxyError.invalidBind
         }
+        let httpHost = (http.host == "0.0.0.0" || http.host == "::" || http.host.isEmpty) ? "127.0.0.1" : http.host
+        let socksHost = (socks.host == "0.0.0.0" || socks.host == "::" || socks.host.isEmpty) ? "127.0.0.1" : socks.host
+        let httpPort = http.port
+        let socksPort = socks.port
 
         // Snapshot current state (read-only, no admin).
         let services = try listNetworkServices(readOnly: true)
@@ -456,41 +445,22 @@ enum SystemProxyManager {
             if !bypassParts.contains(d) { bypassParts.append(d) }
         }
         let bypass = bypassParts.joined(separator: " ")
-        let usePAC = manageProxy && !allowDomains.isEmpty
-        var pacURLString: String?
-        if usePAC {
-            let pacFile = try ProxyHelper.savePAC(
-                httpProxy: "\(http.host):\(http.port)",
-                socksProxy: "\(socks.host):\(socks.port)",
-                allowList: allowDomains,
-                denyList: extraBypassDomains
-            )
-            pacURLString = pacFile.absoluteString
-        }
+        // Always set global system proxy; allow-list is enforced inside zju-connect only.
+        // (PAC-only allow lists left private campus IPs on DIRECT and broke intranet access.)
+        _ = allowDomains
         for service in services {
             let s = shellQuote(service)
             if manageProxy {
-                if usePAC, let pacURLString {
-                    scriptLines += [
-                        "/usr/sbin/networksetup -setwebproxystate \(s) off",
-                        "/usr/sbin/networksetup -setsecurewebproxystate \(s) off",
-                        "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) off",
-                        "/usr/sbin/networksetup -setautoproxyurl \(s) \(shellQuote(pacURLString))",
-                        "/usr/sbin/networksetup -setautoproxystate \(s) on",
-                        "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
-                    ]
-                } else {
-                    scriptLines += [
-                        "/usr/sbin/networksetup -setautoproxystate \(s) off",
-                        "/usr/sbin/networksetup -setwebproxy \(s) \(shellQuote(http.host)) \(http.port)",
-                        "/usr/sbin/networksetup -setwebproxystate \(s) on",
-                        "/usr/sbin/networksetup -setsecurewebproxy \(s) \(shellQuote(http.host)) \(http.port)",
-                        "/usr/sbin/networksetup -setsecurewebproxystate \(s) on",
-                        "/usr/sbin/networksetup -setsocksfirewallproxy \(s) \(shellQuote(socks.host)) \(socks.port)",
-                        "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) on",
-                        "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
-                    ]
-                }
+                scriptLines += [
+                    "/usr/sbin/networksetup -setautoproxystate \(s) off",
+                    "/usr/sbin/networksetup -setwebproxy \(s) \(shellQuote(httpHost)) \(httpPort)",
+                    "/usr/sbin/networksetup -setwebproxystate \(s) on",
+                    "/usr/sbin/networksetup -setsecurewebproxy \(s) \(shellQuote(httpHost)) \(httpPort)",
+                    "/usr/sbin/networksetup -setsecurewebproxystate \(s) on",
+                    "/usr/sbin/networksetup -setsocksfirewallproxy \(s) \(shellQuote(socksHost)) \(socksPort)",
+                    "/usr/sbin/networksetup -setsocksfirewallproxystate \(s) on",
+                    "/usr/sbin/networksetup -setproxybypassdomains \(s) \(bypass)"
+                ]
             }
             if manageDNS, let dnsServers, !dnsServers.isEmpty {
                 let dnsArgs = dnsServers.map(shellQuote).joined(separator: " ")
@@ -501,7 +471,7 @@ enum SystemProxyManager {
         try runBatchScript(scriptLines.joined(separator: "\n"))
         if manageProxy {
             UserDefaults.standard.set(true, forKey: appliedKey)
-            UserDefaults.standard.set(usePAC, forKey: "openzweb.systemProxy.pacMode")
+            UserDefaults.standard.set(false, forKey: "openzweb.systemProxy.pacMode")
         }
         if manageDNS { UserDefaults.standard.set(true, forKey: dnsAppliedKey) }
     }

@@ -64,18 +64,29 @@ struct CaptchaPanel: View {
 struct CaptchaWebView: NSViewRepresentable {
     let url: URL
 
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .default()
+        // Keep captcha cookies/session in-app only; do not hand off to system browser.
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
+        webView.allowsBackForwardNavigationGestures = false
+        context.coordinator.lastLoaded = url
         webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        if webView.url != url {
+        // Only reload when URL actually changes (avoids double-load flicker).
+        if context.coordinator.lastLoaded != url {
+            context.coordinator.lastLoaded = url
             webView.load(URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30))
         }
+    }
+
+    final class Coordinator {
+        var lastLoaded: URL?
     }
 }
