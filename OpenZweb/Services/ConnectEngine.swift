@@ -16,6 +16,7 @@ final class ConnectEngine: ObservableObject {
     @Published private(set) var smsShakeToken: Int = 0
     /// True while waiting for SMS verification result (digits stay, input locked).
     @Published private(set) var isSubmittingSMS = false
+    private var smsSubmitTimeoutTask: Task<Void, Never>?
     @Published private(set) var lastError: String?
     /// One-shot failure dialog (no auto-retry). Cleared when user dismisses.
     @Published var failureDialogMessage: String?
@@ -284,6 +285,8 @@ final class ConnectEngine: ObservableObject {
     private func presentFailure(_ message: String, log: Bool = true) {
         reconnectTask?.cancel()
         reconnectTask = nil
+        clearSMSSubmitting()
+        holdSMSSheet = false
         lastError = message
         failureDialogMessage = message
         if case .failed = phase {
@@ -335,7 +338,7 @@ final class ConnectEngine: ObservableObject {
         phase = .preparing
         lastError = nil
         smsError = nil
-        isSubmittingSMS = false
+        clearSMSSubmitting()
         holdSMSSheet = false
         pendingSMSCode = nil
         smsRetryRelaunch = false
@@ -462,7 +465,7 @@ final class ConnectEngine: ObservableObject {
         pendingSMSCode = nil
         smsRetryRelaunch = false
         smsError = nil
-        isSubmittingSMS = false
+        clearSMSSubmitting()
         phase = .disconnecting
         appendLog("[OpenZweb] " + L10n.t("log.disconnecting"))
 
@@ -516,8 +519,10 @@ final class ConnectEngine: ObservableObject {
         isSubmittingSMS = true
         holdSMSSheet = true
         phase = .waitingSMS
+        startSMSSubmitTimeout()
 
-        if let process, process.isRunning {
+        // TUN mode has no Process handle (root-owned). Check elevated PID / FIFO path.
+        if isEngineProcessAlive() {
             writeLine(code)
             if shouldSkip {
                 appendLog("[OpenZweb] " + L10n.t("log.sms_sent_skip"))
@@ -544,6 +549,20 @@ final class ConnectEngine: ObservableObject {
         pendingSMSCode = code
         appendLog("[OpenZweb] 已提交短信验证码，引擎已退出，正在重新认证后再次提交…")
         relaunchForSMSRetry()
+    }
+
+    /// Normal Process OR elevated TUN engine still running.
+    private func isEngineProcessAlive() -> Bool {
+        if let process, process.isRunning { return true }
+        if elevated, let pid = elevatedPID, pid > 1, Self.isPIDAlive(pid) { return true }
+        // Last resort: PID file written by elevated agent.
+        if elevated, let s = try? String(contentsOf: ElevatedSession.enginePIDURL, encoding: .utf8),
+           let pid = Int32(s.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1,
+           Self.isPIDAlive(pid) {
+            elevatedPID = pid
+            return true
+        }
+        return false
     }
 
     /// EZ4Connect / zju-connect: prefix SMS with "$" to request skipSecondaryAuth.
@@ -1180,7 +1199,7 @@ final class ConnectEngine: ObservableObject {
         pendingSMSCode = nil
         smsRetryRelaunch = false
         smsError = nil
-        isSubmittingSMS = false
+        clearSMSSubmitting()
         captchaImage = nil
         phase = .connected
         connectedSince = Date()
@@ -1561,11 +1580,35 @@ final class ConnectEngine: ObservableObject {
 
 
 
+    private func startSMSSubmitTimeout() {
+        smsSubmitTimeoutTask?.cancel()
+        smsSubmitTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 90_000_000_000)
+            guard let engine = self, !Task.isCancelled else { return }
+            guard engine.isSubmittingSMS else { return }
+            // Still waiting — unlock UI so user can retry or cancel.
+            if engine.phase == .waitingSMS || engine.holdSMSSheet {
+                engine.isSubmittingSMS = false
+                if engine.smsError == nil {
+                    engine.smsError = "验证超时，请确认短信后重新提交"
+                }
+                engine.smsShakeToken += 1
+                engine.appendLog("[OpenZweb] 短信校验超时，已解锁输入")
+            }
+        }
+    }
+
+    private func clearSMSSubmitting() {
+        smsSubmitTimeoutTask?.cancel()
+        smsSubmitTimeoutTask = nil
+        isSubmittingSMS = false
+    }
+
     private func handleSMSFailure(from line: String) {
         let message = Self.friendlySMSError(from: line)
         lastError = message
         smsError = message
-        isSubmittingSMS = false
+        clearSMSSubmitting()
         holdSMSSheet = true
         if phase != .connected {
             phase = .waitingSMS
@@ -1815,15 +1858,25 @@ final class ConnectEngine: ObservableObject {
         }
 
         // Wrong SMS often kills the engine — keep OTP sheet so user can re-enter.
+        // Intentional SMS relaunch: keep submitting state; otherwise unlock "正在校验验证码".
         if holdSMSSheet || phase == .waitingSMS || (smsError != nil && !wasAuthenticated) {
             phase = .waitingSMS
             holdSMSSheet = true
             connectedSince = nil
             didAuthenticate = false
-            if smsError == nil, let lastError, Self.looksLikeSMSUserMessage(lastError) {
-                smsError = lastError
+            if !smsRetryRelaunch {
+                clearSMSSubmitting()
+                if smsError == nil {
+                    if let lastError, Self.looksLikeSMSUserMessage(lastError) {
+                        smsError = lastError
+                    } else {
+                        smsError = "引擎已退出，请重新输入验证码"
+                    }
+                }
+                appendLog("[OpenZweb] 短信验证未通过，请继续在当前页面输入验证码")
+            } else {
+                appendLog("[OpenZweb] 短信重试验证：引擎已重启，等待再次提交")
             }
-            appendLog("[OpenZweb] 短信验证未通过，请继续在当前页面输入验证码")
             return
         }
 
